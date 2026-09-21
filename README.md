@@ -6,7 +6,7 @@ next-token distribution in **one forward pass**. Nothing is generated, so there
 is no text to parse, nothing to repair, and no way for the answer to be
 something other than one of the ids you declared.
 
-**Status: the readout runtime works.** 28 protocol tests pass; `llama-3.2-3b-instruct`
+**Status: the readout runtime works.** 45 tests pass; `llama-3.2-3b-instruct`
 answers 6/6 on a triage smoke set with sensible confidence gradation (0.41 on a
 genuinely ambiguous case, 0.99 on clear ones). No training has happened — v1
 freezes the backbone entirely, which is the design, not a shortcut. Three of the
@@ -61,12 +61,39 @@ the last position is not the answer position and no id can repair it. This makes
 SentencePiece backbones usable instead of rejected, and is correct by
 construction on BPE ones.
 
+## Measured latency
+
+`llama-3.2-3b-instruct`, bf16, RTX 3080, 130-token prompt, batch 1, after clock
+warm-up (n=48):
+
+| | p50 | p95 |
+|---|---:|---:|
+| forward pass | 35.9 ms | 36.5 ms |
+| **end to end** | **36.9 ms** | **37.5 ms** |
+
+Pipeline overhead — tokenising, resolving slots in context, and the restricted
+softmax — is **1.0 ms** of that. The same decision on CPU costs ~3,400 ms, so
+the GPU is worth **92×** here.
+
+For context rather than comparison: Laya is published at 32.8 ms on a T4 and
+TypeSafe Jev has been independently measured at 236–276 ms.
+
+Two findings behind those numbers, both of which cost real time to run down:
+
+- **`eager` attention beats SDPA at this scale** — 39.1 ms against 50.4 ms on a
+  130-token prompt at batch 1. A decision prompt is short and un-batched, so
+  SDPA's kernel overhead is never repaid. `load()` therefore defaults to eager;
+  pass `attn_implementation="sdpa"` for long evidence, where that should invert.
+- **Check what else holds VRAM before trusting any timing.** The first GPU run
+  measured 457 ms p50 with a 2,458 ms p95 and wildly inconsistent
+  attention-implementation results. Ollama was holding 3.3 GB of a 10 GB card,
+  leaving the model thrashing, and the GPU was sitting at 210 MHz of 2,130.
+  After `ollama stop` and a proper warm-up the same benchmark was 12× faster and
+  the distribution tightened to a 0.6 ms spread. A one-off timing on a busy GPU
+  is not a measurement.
+
 ## Known limits
 
-- **CPU-only torch is installed** (`2.10.0+cpu`) on a machine with an RTX 3080.
-  A decision costs **~3.4 s** on CPU for a 3B model, against roughly 0.2 s needed
-  to be competitive on a latency axis. A CUDA build is the single biggest
-  outstanding dependency; wheels for Python 3.14 may not exist yet.
 - **16 options maximum** — one single-token letter each. Above roughly that,
   retrieve-then-decide beats decide-over-everything anyway; every system in this
   family degrades sharply with menu size.
@@ -94,17 +121,22 @@ src/jobe/
   slots.py     answer-letter slots + the in-context resolution and boundary guard
   prompt.py    the decision record, its validation, and the rendered prompt
   readout.py   one forward pass, last-position logits, restricted softmax
-  model.py     frozen backbone loading; device resolved once
-tests/         28 protocol tests, no model required
+  model.py     frozen backbone loading; device and attention resolved once
+  orders.py    score under several option orders, average, report the flip rate
+  calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
+tests/         45 tests; only two need a tokenizer, none need a model or a GPU
 ```
 
 ## Next
 
-1. CUDA torch, then re-measure latency — the whole speed argument rests on it.
-2. Order averaging across 2+ option orders (pays in proportion to the
-   order-fragility it fixes; measure the flip rate first, it is not free).
-3. One fitted temperature on a held-out split.
-4. A `/v1/systemone`-compatible server.
+1. ~~CUDA torch, then re-measure latency.~~ Done — 36.9 ms p50.
+2. ~~Order averaging across option orders.~~ Built (`jobe.orders`) — reports
+   `flip_rate` alongside the averaged result, because it pays only in proportion
+   to the fragility it fixes. Not yet validated at volume on a real task set.
+3. ~~One fitted temperature.~~ Built (`jobe.calibrate`) — golden-section on
+   held-out NLL, no optimiser and no dependency. Also not yet fitted on real data.
+4. Run EveryAppKit's `decisionGate` against this backbone, per tier.
+5. A `/v1/systemone`-compatible server.
 
 Only after those plateau is training worth considering.
 

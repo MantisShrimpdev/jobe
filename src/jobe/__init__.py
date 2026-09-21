@@ -24,7 +24,22 @@ answer to be something other than one of the declared ids.
 Protocol adapted from TheoLeeCJ/SemIf (MIT). See NOTICE.
 """
 
+from .calibrate import (
+    CalibrationReport,
+    brier_score,
+    calibration_report,
+    fit_temperature,
+    negative_log_likelihood,
+    softmax_with_temperature,
+)
 from .model import LoadedModel, load, pick_device
+from .orders import (
+    AveragedReadout,
+    average_readouts,
+    order_variants,
+    score_averaged,
+    total_variation,
+)
 from .prompt import (
     PROMPT_VERSION,
     SYSTEM_PROMPT,
@@ -46,6 +61,17 @@ from .slots import (
 )
 
 __all__ = [
+    "total_variation",
+    "softmax_with_temperature",
+    "score_averaged",
+    "order_variants",
+    "negative_log_likelihood",
+    "fit_temperature",
+    "calibration_report",
+    "brier_score",
+    "average_readouts",
+    "CalibrationReport",
+    "AveragedReadout",
     "LETTERS",
     "MAX_OPTIONS",
     "PROMPT_VERSION",
