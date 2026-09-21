@@ -1,0 +1,18 @@
+jobe
+Copyright (c) 2026
+
+This project contains code adapted from third-party open-source projects.
+
+- TheoLeeCJ/SemIf (https://github.com/TheoLeeCJ/SemIf) - MIT.
+  The "semantic if" decision protocol: single-letter answer slots for declared
+  options, the evidence/criterion/options payload with evidence placed first so
+  it forms a reusable prefix, decision-record validation, the single forward
+  pass with last-position logits restricted to the declared slots, and the
+  restricted softmax over those slots. Re-authored here; the answer-slot
+  verification is changed rather than copied - slots are resolved IN CONTEXT
+  from encode(prompt + letter)[-1] instead of by encoding each letter
+  standalone, which is what makes SentencePiece tokenizers usable.
+
+MIT-licensed portions are used under the terms of the MIT License; the original
+copyright and permission notices are retained via the per-module attribution
+headers.

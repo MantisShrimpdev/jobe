@@ -1,0 +1,20 @@
+[project]
+name = "jobe"
+version = "0.1.0"
+description = "Local frozen-backbone decision readout: classify over declared options in one forward pass, never generate."
+requires-python = ">=3.10"
+dependencies = ["torch>=2.4", "transformers>=4.44"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jobe"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
