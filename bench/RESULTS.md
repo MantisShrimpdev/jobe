@@ -642,6 +642,47 @@ band is 70 decisions holding 25 wrong answers, it is where every point of
 plausible gain lives, and four attacks have failed on it. What has not been
 tried there is a *different* model, not a different way of asking this one.
 
+### What the remaining headroom is actually made of
+
+The contested band is 70 decisions holding 25 wrong answers. Since every
+intervention has to win there or not at all, it is worth knowing what they are:
+
+| tier | family | wrong | of contested |
+|---|---|---:|---:|
+| hard | **probability** | 5 | 9 |
+| hard | **temporal_numeric** | 5 | 8 |
+| hard | multi_hop | 4 | 13 |
+| hard | long_policy | 3 | 10 |
+| hard | ambiguous | 2 | 4 |
+| hard | tradeoff | 2 | 4 |
+| hard | judge_hard | 2 | 7 |
+| hard | adversarial | 1 | 3 |
+| standard | policy | 1 | 2 |
+
+Two quantitative families — probability and temporal_numeric — carry **10 of
+the 25**, and they are the only two where the model is wrong more often than
+right inside the band (5 of 9 and 5 of 8). The rest is spread thin.
+
+Two more cuts. **16 of the 25 are ordering failures**: the correct option was
+in the model's top two and it picked the other one. The remaining 9 are the
+model not surfacing the answer at all, and no re-ask or re-ordering can reach
+those. And **8 of the 25 are binary questions**, where tonight's runoff measured
+a ~20-point second-slot bias — on a two-option decision at 0.45–0.85
+confidence, the slot is doing a meaningful share of the deciding.
+
+So the headroom is mostly arithmetic the model cannot do, presented as a choice
+it cannot order. That is consistent with everything else measured here: the
+routed thinking pass reached the same wrong answer 71% of the time, and two
+LoRA runs on synthetic arithmetic worlds made it worse. It is a capability
+ceiling of this 4B, not a prompting or a scoring problem, and the lever that
+has actually moved it before is the backbone: Qwen3.5-4B scores 0.801 against
+llama-3.2-3b's 0.545 on identical prompts.
+
+**The honest next step is a bigger backbone, and it does not fit.** A 7–8B at
+bf16 needs ~16 GB against this card's 10 GB, so it means quantisation (which
+changes what is being measured) or different hardware. Everything cheaper has
+now been tried and measured.
+
 ### The same band re-decides the routed-reasoning result
 
 The routed pass was judged as one rule — think on the bottom 30% of hard tasks
