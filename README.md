@@ -322,15 +322,39 @@ tests/         52 tests; a few need a tokenizer, two are opt-in on a real GPU (t
     earns: 74.85 → 73.62. Free thinking never terminates on this backbone at any
     cap. The finding underneath: when both modes miss, 71% of the time it is the
     *same* wrong answer — a knowledge gap, not a thinking gap.
+    **Refined (2026-09-23): that verdict was about the rule, not the
+    technique.** Below 0.45 confidence the same pass fixes 4 and breaks **0**,
+    and that cut routes no standard decision, which is what Speed is scored on.
+    Same budget: the composite goes −1.22 → −0.40 and the accuracy-weighted
+    view −0.33 → **+0.23**.
+11. ~~Training on the exact-law families.~~ Done twice, and **neither adapter
+    ships.** Run 1 (worlds only) reached 0.619 held-out worlds and took JevBench
+    hard 0.604 → 0.586. Run 2 added 30% rehearsal and a KL anchor to the frozen
+    base: it improved *every* training-side number — worlds 0.650 with 30%
+    fewer world records, held-out ECE 0.056 → 0.022, general MMLU ability
+    0.685 → 0.730, order stability, position bias — and got worse on *every*
+    benchmark number: hard **0.550**, overall 0.771, Brier 0.297, ECE 0.063.
+    Held-out temporal_numeric went 0.243 → 0.615 while JevBench's
+    temporal_numeric went 3/15 → **2/15**. The generators are a different
+    distribution wearing the same family names.
 
 The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
-baseline. What follows it, in order: **submit** (item 8 — the held-out number
-is the one that counts), then **training** on the families where the model
-reproduces the same wrong answer — temporal_numeric, long_policy, multi_hop —
-from exact-law generators (TheLab's `thelab.decisions.worlds`: temporal_numeric,
-long_policy and multi_hop are built), LoRA on the frozen backbone, CE on the option slots plus a Brier
-term, gated by E1 and `bench/gate.py` and compared to `v0.1.0` through the same
-harness.
+baseline and, after two training runs, is still the shipped readout. What
+follows it: **submit** (item 8 — the held-out number is the one that counts),
+and then the inference-time work, because that is where the measurements now
+point. Training on the exact-law generators is closed, not paused: two runs,
+the better-trained one worse, and held-out world accuracy moving opposite to
+JevBench hard across all three points. Reopening it needs training data drawn
+from the benchmark's own distribution, not another regulariser on the same
+worlds.
+
+The open inference-time items, in the order the evidence favours them: a
+**top-two runoff** for contested decisions, where the correct option is already
+inside the model's top two 87% of the time against 61% first; **order
+averaging** on the same band, which the E2 control has measured but never been
+run as a scoring mode; and the **tightened routing threshold** above. All three
+live in the same 30% of decisions — see the confidence-band section of
+`bench/RESULTS.md`, which is the one framework that has held up.
 
 ## License and attribution
 
