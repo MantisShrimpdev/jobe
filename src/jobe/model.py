@@ -52,7 +52,9 @@ def apply_adapter(model, lora_dir: str) -> int:
     except ImportError as e:  # pragma: no cover
         raise ImportError("applying a LoRA adapter needs TheLab: pip install -e <TheLab checkout>") from e
     load_lora(model, lora_dir)
-    return merge_lora(model)
+    merged = merge_lora(model)
+    model.requires_grad_(False)     # a merged adapter is inert: nothing on this model trains
+    return merged
 
 
 def load(
