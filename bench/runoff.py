@@ -108,6 +108,8 @@ def main(argv=None) -> int:
     from thelab.core.gpu import require_free_gpu
     require_free_gpu(3000)
     backbone = load(args.model, device=args.device)
+    # load() falls back to JOBE_LORA_DIR, so say out loud which weights answered.
+    print(f"backbone {backbone.name}" + (f" + adapter {backbone.adapter}" if backbone.adapter else ""), flush=True)
 
     rows, t0 = [], time.perf_counter()
     for n, tid in enumerate(contested, 1):
