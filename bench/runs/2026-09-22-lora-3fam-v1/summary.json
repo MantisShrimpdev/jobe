@@ -1,0 +1,388 @@
+{
+ "manifest": {
+  "config": {
+   "epochs": 1,
+   "lr": 0.0002,
+   "weight_decay": 0.0,
+   "batch_size": 1,
+   "grad_accum": 8,
+   "brier_weight": 0.5,
+   "max_grad_norm": 1.0,
+   "warmup_steps": 20,
+   "eval_every": 100,
+   "seed": 0,
+   "gradient_checkpointing": true,
+   "lora": {
+    "r": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "target_modules": [
+     "q_proj",
+     "k_proj",
+     "v_proj",
+     "o_proj"
+    ],
+    "exclude": [
+     "lm_head"
+    ]
+   },
+   "log_every": 10,
+   "gpu_guard_gb": 3.0
+  },
+  "n_train": 3646,
+  "n_heldout": 407,
+  "lora_wrapped": 32,
+  "trainable": 3145728,
+  "total": 4208897024,
+  "trainable_share": 0.0007473996113619339,
+  "total_steps": 456,
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 3080",
+  "torch": "2.11.0+cu128",
+  "python": "3.14.3",
+  "thelab_rev": "61fb3e5",
+  "cwd_rev": "5cc257d",
+  "started": "2026-09-22T18:40:22",
+  "backbone": "D:/Coding/models/qwen35-4b",
+  "records": [
+   "runs/data/temporal_numeric.jsonl",
+   "runs/data/long_policy.jsonl",
+   "runs/data/multi_hop.jsonl"
+  ],
+  "dropped": 1347
+ },
+ "history": [
+  {
+   "n": 407,
+   "accuracy": 0.29484029484029484,
+   "nll": 1.5668279828990386,
+   "brier": 0.8237438050126399,
+   "ece": 0.2275539236622338,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.26625386996904027
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.42424242424242425
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.3333333333333333
+    }
+   },
+   "mistakes": {
+    "unnamed": 85,
+    "excluded_both_boundary_days": 27,
+    "exactly_11h_counted_as_violation": 15,
+    "followed_unissued_annotation": 14,
+    "calendar_days_counted": 12,
+    "tib_read_as_decimal_tb": 11,
+    "inclusive_end_date": 10,
+    "excluded_the_last_day_of_term": 9,
+    "rounded_each_day": 9,
+    "severity_not_adjusted": 8,
+    "followed_near_miss_identifier": 7,
+    "rounded_each_item": 6,
+    "forgot_the_fee": 6,
+    "counted_the_effective_date_as_unused": 6,
+    "ignored_credits": 6,
+    "compared_wall_clocks_without_converting": 5,
+    "wrong_basis_365_vs_360": 5,
+    "included_breakfast": 5,
+    "weekend_paused_the_window": 4,
+    "list_price_instead_of_paid": 4,
+    "ignored_nightly_cap": 4,
+    "counted_tax_and_ignored_credits": 4,
+    "excluded_the_cancellation_date": 3,
+    "act_vs_30_360": 3,
+    "counted_out_of_cycle_purchase": 3,
+    "counted_tax_in_net": 3,
+    "used_superseded_revision": 3,
+    "used_next_business_day_rate": 2,
+    "utc_not_converted": 2,
+    "no_month_end_rule": 1,
+    "365_day_term": 1,
+    "wall_clock_across_change": 1,
+    "rounded_each_night": 1,
+    "override_window_ignored": 1,
+    "retired_rota_sheet_used": 1
+   },
+   "step": 0,
+   "epoch": 0.0,
+   "elapsed_s": 176.0
+  },
+  {
+   "n": 407,
+   "accuracy": 0.5651105651105651,
+   "nll": 1.006786097415784,
+   "brier": 0.5327096369925096,
+   "ece": 0.07383029334109899,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.5232198142414861
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.696969696969697
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.8333333333333334
+    }
+   },
+   "mistakes": {
+    "unnamed": 76,
+    "rounded_each_day": 15,
+    "wall_clock_across_change": 10,
+    "tib_read_as_decimal_tb": 9,
+    "used_superseded_revision": 8,
+    "rounded_each_item": 6,
+    "rounded_each_night": 6,
+    "exactly_11h_counted_as_violation": 5,
+    "counted_the_effective_date_as_unused": 4,
+    "counted_out_of_cycle_purchase": 4,
+    "followed_unissued_annotation": 4,
+    "used_checkin_date_rate": 3,
+    "followed_near_miss_identifier": 3,
+    "utc_not_converted": 3,
+    "counted_from_the_letter": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "365_day_term": 2,
+    "excluded_the_last_day_of_term": 2,
+    "forgot_the_fee": 2,
+    "ignored_credits": 2,
+    "retired_rota_sheet_used": 2,
+    "wrong_basis_365_vs_360": 1,
+    "act_vs_30_360": 1,
+    "used_next_business_day_rate": 1,
+    "included_breakfast": 1,
+    "ignored_foreign_fee": 1,
+    "counted_tax_and_ignored_credits": 1
+   },
+   "step": 100,
+   "epoch": 0.219,
+   "elapsed_s": 1637.8
+  },
+  {
+   "n": 407,
+   "accuracy": 0.5823095823095823,
+   "nll": 0.9477080633664918,
+   "brier": 0.5193910439608661,
+   "ece": 0.07017357748988992,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.5510835913312694
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.7121212121212122
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.6666666666666666
+    }
+   },
+   "mistakes": {
+    "unnamed": 48,
+    "opened_on_the_notice_day": 24,
+    "wall_clock_across_change": 12,
+    "rounded_each_day": 12,
+    "tib_read_as_decimal_tb": 11,
+    "used_superseded_revision": 8,
+    "rounded_each_item": 6,
+    "compared_wall_clocks_without_converting": 5,
+    "ignored_credits": 4,
+    "followed_unissued_annotation": 4,
+    "exactly_11h_counted_as_violation": 3,
+    "rounded_each_night": 3,
+    "counted_out_of_cycle_purchase": 3,
+    "utc_not_converted": 3,
+    "counted_from_the_letter": 3,
+    "calendar_days_counted": 3,
+    "counted_the_effective_date_as_unused": 2,
+    "365_day_term": 2,
+    "excluded_the_last_day_of_term": 2,
+    "used_checkin_date_rate": 2,
+    "used_next_business_day_rate": 2,
+    "retired_rota_sheet_used": 2,
+    "followed_near_miss_identifier": 2,
+    "no_month_end_rule": 1,
+    "wrong_basis_365_vs_360": 1,
+    "included_breakfast": 1,
+    "counted_tax_in_net": 1
+   },
+   "step": 200,
+   "epoch": 0.439,
+   "elapsed_s": 3082.0
+  },
+  {
+   "n": 407,
+   "accuracy": 0.6191646191646192,
+   "nll": 0.815941083761084,
+   "brier": 0.46080915690216045,
+   "ece": 0.056106735241237236,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.5975232198142415
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.6666666666666666
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.8333333333333334
+    }
+   },
+   "mistakes": {
+    "unnamed": 58,
+    "rounded_each_day": 16,
+    "tib_read_as_decimal_tb": 11,
+    "wall_clock_across_change": 9,
+    "used_superseded_revision": 7,
+    "rounded_each_item": 6,
+    "followed_near_miss_identifier": 6,
+    "compared_wall_clocks_without_converting": 5,
+    "weekend_paused_the_window": 4,
+    "followed_unissued_annotation": 4,
+    "365_day_term": 3,
+    "counted_out_of_cycle_purchase": 3,
+    "counted_from_the_letter": 3,
+    "counted_the_effective_date_as_unused": 2,
+    "excluded_the_last_day_of_term": 2,
+    "inclusive_end_date": 2,
+    "used_next_business_day_rate": 2,
+    "ignored_credits": 2,
+    "opened_on_the_notice_day": 1,
+    "no_month_end_rule": 1,
+    "wrong_basis_365_vs_360": 1,
+    "act_vs_30_360": 1,
+    "exactly_11h_counted_as_violation": 1,
+    "rounded_each_night": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "counted_tax_in_net": 1,
+    "utc_not_converted": 1
+   },
+   "step": 300,
+   "epoch": 0.658,
+   "elapsed_s": 4339.5
+  },
+  {
+   "n": 407,
+   "accuracy": 0.5896805896805897,
+   "nll": 0.8408149268546231,
+   "brier": 0.4767670778360902,
+   "ece": 0.07593196076490247,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.5696594427244582
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.6212121212121212
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.8333333333333334
+    }
+   },
+   "mistakes": {
+    "unnamed": 69,
+    "rounded_each_day": 16,
+    "tib_read_as_decimal_tb": 11,
+    "wall_clock_across_change": 10,
+    "followed_near_miss_identifier": 7,
+    "used_superseded_revision": 7,
+    "rounded_each_item": 6,
+    "followed_unissued_annotation": 6,
+    "weekend_paused_the_window": 4,
+    "compared_wall_clocks_without_converting": 3,
+    "365_day_term": 3,
+    "exactly_11h_counted_as_violation": 3,
+    "rounded_each_night": 3,
+    "counted_out_of_cycle_purchase": 3,
+    "counted_from_the_letter": 3,
+    "counted_the_effective_date_as_unused": 2,
+    "excluded_the_last_day_of_term": 2,
+    "used_next_business_day_rate": 2,
+    "opened_on_the_notice_day": 1,
+    "act_vs_30_360": 1,
+    "wrong_basis_365_vs_360": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "ignored_credits": 1,
+    "counted_tax_in_net": 1
+   },
+   "step": 400,
+   "epoch": 0.878,
+   "elapsed_s": 5650.1
+  },
+  {
+   "n": 407,
+   "accuracy": 0.5823095823095823,
+   "nll": 0.8411867796527914,
+   "brier": 0.4788695705719249,
+   "ece": 0.09858876950896206,
+   "by_family": {
+    "temporal_numeric": {
+     "n": 323,
+     "accuracy": 0.5572755417956656
+    },
+    "multi_hop": {
+     "n": 66,
+     "accuracy": 0.6363636363636364
+    },
+    "long_policy": {
+     "n": 18,
+     "accuracy": 0.8333333333333334
+    }
+   },
+   "mistakes": {
+    "unnamed": 73,
+    "rounded_each_day": 16,
+    "tib_read_as_decimal_tb": 11,
+    "wall_clock_across_change": 9,
+    "followed_near_miss_identifier": 7,
+    "used_superseded_revision": 7,
+    "rounded_each_item": 6,
+    "rounded_each_night": 5,
+    "weekend_paused_the_window": 4,
+    "followed_unissued_annotation": 4,
+    "365_day_term": 3,
+    "exactly_11h_counted_as_violation": 3,
+    "counted_out_of_cycle_purchase": 3,
+    "counted_from_the_letter": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "counted_the_effective_date_as_unused": 2,
+    "excluded_the_last_day_of_term": 2,
+    "wrong_basis_365_vs_360": 2,
+    "used_next_business_day_rate": 2,
+    "opened_on_the_notice_day": 1,
+    "act_vs_30_360": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "ignored_credits": 1,
+    "counted_tax_in_net": 1
+   },
+   "step": 456,
+   "epoch": 1.0,
+   "elapsed_s": 6419.9
+  }
+ ],
+ "best": {
+  "nll": 0.815941083761084,
+  "step": 300,
+  "accuracy": 0.6191646191646192,
+  "ece": 0.056106735241237236
+ },
+ "stopped": null,
+ "finished": "2026-09-22T20:27:22",
+ "elapsed_s": 6419.9
+}

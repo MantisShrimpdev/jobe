@@ -1,0 +1,47 @@
+{
+ "model": "D:/Coding/models/qwen35-4b",
+ "tiers": {
+  "easy": {
+   "n": 48,
+   "position_concentration": 0.3125,
+   "position_expected": 0.24615384615384617,
+   "accuracy": 1.0,
+   "chance": 0.284375,
+   "mean_confidence": 0.9780532463460904,
+   "e1_accuracy": 0.3125,
+   "e1_drop": 0.6875,
+   "e1_mean_confidence": 0.7152214242004549,
+   "e2_flip_rate": 0.0,
+   "e2_mean_tv": 0.028462304986020315,
+   "e2_accuracy": 1.0
+  },
+  "hard": {
+   "n": 111,
+   "position_concentration": 0.3963963963963964,
+   "position_expected": 0.29365079365079366,
+   "accuracy": 0.6126126126126126,
+   "chance": 0.33618618618618623,
+   "mean_confidence": 0.6546756890833452,
+   "e1_accuracy": 0.36036036036036034,
+   "e1_drop": 0.25225225225225223,
+   "e1_mean_confidence": 0.5905445625827779,
+   "e2_flip_rate": 0.2072072072072072,
+   "e2_mean_tv": 0.1351017246007789,
+   "e2_accuracy": 0.5585585585585585
+  },
+  "original": {
+   "n": 72,
+   "position_concentration": 0.3611111111111111,
+   "position_expected": 0.2608695652173913,
+   "accuracy": 0.9583333333333334,
+   "chance": 0.3111111111111111,
+   "mean_confidence": 0.8994649036314956,
+   "e1_accuracy": 0.3055555555555556,
+   "e1_drop": 0.6527777777777778,
+   "e1_mean_confidence": 0.71737572216588,
+   "e2_flip_rate": 0.041666666666666664,
+   "e2_mean_tv": 0.08150807214070616,
+   "e2_accuracy": 0.9166666666666666
+  }
+ }
+}

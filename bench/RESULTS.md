@@ -396,6 +396,61 @@ a product option (+4.5 points on hard for ~14 s per hard decision, when
 accuracy matters more than the bill), not a leaderboard move, and it is not
 wired into `jobe_direct.py`.
 
+## Training, first full run — it does not ship (2026-09-22)
+
+TheLab's loop (`thelab.decisions.train`): LoRA r=16 on the attention projections
+of the frozen Qwen3.5-4B (3.1 M trainable of 4.2 B), loss = CE on the option
+slots + 0.5 × Brier, one epoch over the three exact-law families at a
+2,048-token cap — 3,646 records (all of temporal_numeric, 35 % of long_policy,
+67 % of multi_hop; 1,347 dropped over the cap, never truncated), 407 held out,
+456 optimiser steps, 1 h 47 min on the RTX 3080 with flash-linear-attention
+kernels. Best checkpoint by held-out NLL: step 300. Artifacts:
+`bench/runs/2026-09-22-lora-3fam-v1/` (training summary and manifest, the
+harness results and score, the gate report); the adapter weights themselves
+stay out of git (`runs/lora-3fam-v1/best/`, 12 MB).
+
+**On its own held-out worlds it learned a great deal:**
+
+| step | acc | NLL | Brier | ECE |
+|---:|---:|---:|---:|---:|
+| 0 (v0.1.0) | 0.295 | 1.567 | 0.824 | 0.228 |
+| 100 | 0.565 | 1.007 | 0.533 | 0.074 |
+| **300 (kept)** | **0.619** | **0.816** | **0.461** | **0.056** |
+| 456 | 0.582 | 0.841 | 0.479 | 0.099 |
+
+**On JevBench it did not transfer, and it cost the untrained families** — the
+official harness on the same 231 public tasks, step-300 adapter merged into
+the weights (`JOBE_LORA_DIR`), gate passed on every tier:
+
+| tier | n | v0.1.0 | adapter | Δ | ECE v0.1.0 → adapter |
+|---|---:|---:|---:|---:|---:|
+| easy | 48 | 1.000 | 1.000 | 0 | 0.016 → 0.022 |
+| standard | 72 | 0.986 | 0.958 | **−2** | 0.046 → 0.062 |
+| hard | 111 | 0.604 | 0.586 | **−2** | 0.133 → 0.128 |
+| all | 231 | 0.805 | 0.788 | −4 | 0.049 → 0.049 |
+
+By hard-tier family the shape is exactly what one epoch on three families
+should produce: the trained families moved up — temporal_numeric 3/15 → 5/15,
+multi_hop +1, probability +1, tradeoff +1 — and the untrained ones paid for
+it: **judge_hard 13/17 → 9/17 (−4)**, ambiguous −2, long_policy −1; on the
+standard tier adequacy −2 and intent −1. 14 hard items fixed, 16 broken.
+Calibration improved (axis 71.7 → 74.9; hard ECE 0.133 → 0.128), which is the
+Brier term working as designed. Under v1.3 the composite reads 73.3 against
+72.8 — a tick up that comes entirely from calibration and a run-to-run speed
+difference, while Intelligence fell 74.3 → 71.6.
+
+**Decision: v0.1.0 stays the shipped readout.** The rule was "ship only if
+hard rises without easy or standard falling"; hard did not rise and standard
+fell. The adapter is kept as a measurement, not a release.
+
+**What it says.** The worlds teach the habits they contain, and the model
+learned them — but the JevBench hard tier is mostly *other* families
+(judge_hard, ambiguous, trap, adversarial) that a LoRA on eight attention
+layers forgets while it learns ours. The fix is not more epochs; it is
+anchoring: a KL-to-the-frozen-base term on decisions the base already answers
+well, so learning the three families cannot move the rest. That is the next
+change to the loop, and the next run is judged the same way.
+
 ## What this does not cover
 
 - **Order averaging is still unrun as a scoring mode.** E2 measured the flip
