@@ -222,6 +222,7 @@ src/jobe/
   calibrate.py re-exports TheLab's temperature fitting and calibration report
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
   records.py   a TheLab decision record as a Decision
+  train_adapter.py  what TheLab's training loop needs from this readout: prompt ids, slot ids, gold
 tests/         52 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
