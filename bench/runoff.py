@@ -17,6 +17,11 @@ question is being asked in the shape the model is best at.
 It is also cheap. A runoff costs one extra forward pass on a shorter prompt,
 and only for the third of decisions that are contested.
 
+ORDINAL QUESTIONS ARE EXCLUDED. A "rate this 1-5" is a scale, not a menu: the
+harness grades it by the expected value over the levels, and offering two of
+five levels changes what is being asked rather than how it is asked. They are
+counted in the header so the exclusion is visible.
+
   python bench/runoff.py --tasks <all231.jsonl> --results <results.jsonl> \
       --model D:/Coding/models/qwen35-4b --band 0.45 0.85 --out runoff.jsonl
 """
@@ -78,15 +83,25 @@ def main(argv=None) -> int:
                 first[r["task_id"]] = r
 
     lo, hi = args.band
-    contested = []
+    contested, ordinal = [], 0
     for tid, r in first.items():
         probs = r.get("probs") or {}
         if not probs or tid not in tasks:
             continue
-        if lo <= max(probs.values()) < hi and len(probs) > 2:
-            contested.append(tid)
+        if not (lo <= max(probs.values()) < hi) or len(probs) <= 2:
+            continue
+        # An ordinal question is not a menu that can be truncated. Its levels are
+        # a scale, the harness grades it by the expected value over that scale,
+        # and offering two of five levels changes what is being asked rather than
+        # how it is asked. So they are excluded, and counted rather than dropped
+        # quietly.
+        if tasks[tid]["question"]["type"] == "score":
+            ordinal += 1
+            continue
+        contested.append(tid)
     contested.sort()
-    print(f"{len(contested)} contested decisions with more than two options in [{lo}, {hi})", flush=True)
+    print(f"{len(contested)} contested choice decisions with more than two options in "
+          f"[{lo}, {hi}); {ordinal} ordinal decisions excluded (a scale is not a menu)", flush=True)
     if not contested:
         return 0
 
