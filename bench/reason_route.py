@@ -22,13 +22,14 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 import torch  # noqa: E402
 from transformers import LogitsProcessor, LogitsProcessorList  # noqa: E402
+
+from thelab.core.gpu import require_free_gpu, used_by_others_gb  # noqa: E402
 
 from jobe import Decision, Option, build_messages, load  # noqa: E402
 from jobe.slots import LETTERS  # noqa: E402
@@ -75,12 +76,6 @@ def parse(kind, opts, tail):
     return None
 
 
-def gpu_used_by_others_gb():
-    """VRAM held by anyone but this process."""
-    free, total = torch.cuda.mem_get_info()
-    return (total - free - torch.cuda.memory_reserved()) / 2**30
-
-
 ap = argparse.ArgumentParser()
 ap.add_argument("--tasks", required=True, help="jevbench datasets/public/hard.jsonl")
 ap.add_argument("--official", required=True, help="results.jsonl from the official-harness run")
@@ -119,10 +114,7 @@ print(f"hard n={n_hard}  routed={k_route} (conf <= {cutoff:.3f})  "
       f"done={len(done)}  todo={len(todo)}  mode={args.mode} cap={args.cap} budget={args.budget}")
 
 if todo and not args.report_only:
-    vram = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader"],
-                          capture_output=True, text=True, timeout=20).stdout.strip()
-    if int(vram.split()[0]) > 3000:
-        sys.exit(f"GPU busy ({vram}) - aborting rather than contending")
+    require_free_gpu(3000)
     bb = load(args.model, device="auto", attn_implementation=args.attn)
     tok, model, dev = bb.tokenizer, bb.model, next(bb.model.parameters()).device
     pad = tok.pad_token_id or tok.eos_token_id
@@ -131,8 +123,8 @@ if todo and not args.report_only:
     hdr = f"{'task':30s} {'exp':>8s} {'read':>8s} {'reason':>8s} {'ok':>3s} {'term':>4s} {'new':>5s} {'sec':>6s}"
     print(hdr)
     for i, r in enumerate(todo):
-        if i and gpu_used_by_others_gb() > 3.0:
-            print(f"another process took the GPU ({gpu_used_by_others_gb():.1f} GB) - stopping after {i} tasks; rerun to resume")
+        if i and used_by_others_gb() > 3.0:
+            print(f"another process took the GPU ({used_by_others_gb():.1f} GB) - stopping after {i} tasks; rerun to resume")
             break
         task = tasks[r["task_id"]]
         kind = task["question"]["type"]

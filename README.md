@@ -172,52 +172,15 @@ the head runs on one vector per row rather than every padded position. Every
 guard runs for every decision before any forward pass: one foreign decision
 refuses the whole call up front, not after half of it has been paid for.
 
-## Worlds — training data from exact laws
+## Worlds — training data from exact laws (now in TheLab)
 
-The hard-tier gap is knowledge, not thinking depth (see `bench/RESULTS.md`), so
-the next lever is training — and training data for exact-law families cannot
-be labelled by a model that gets them wrong. `jobe.worlds` generates decisions
-whose answers are **computed by code** from rules stated in full in the
-evidence. `worlds/temporal_numeric.py` covers the family where the readout most
-often reproduces the same wrong number: day-count interest, month-end roll with
-leap years and time zones, threshold-crossing days on net cost, cumulative card
-limits, rest periods across a clock change, business-day windows, unit
-conversion with one rounding, binary-vs-decimal allowances, FX reimbursement,
-refund and credit proration — eleven laws. `worlds/long_policy.py` builds
-8–13k-character policy packs the way that family builds them: definitions with
-a carve-out, numbered clauses, an amendment with its own applicability date, a
-superseded text left in the file, the case records and a desk note applying
-the naive rule — six laws: approval routing by aggregated contract value, a
-water-damage claim through exclusion, exception and endorsement, alert routing
-through ordered runbook rules, payment-relief eligibility on a defined income,
-appeal admissibility on working days with closures, and a commercial returns
-decision. `worlds/multi_hop.py` is identifier discipline: a root record names
-two identifiers that resolve through a directory, an inventory, a class table,
-a control register, a revision log and a status board, and only the record the
-exact chain reaches supplies the rule — while the file also holds a near-miss
-code, an unissued annotation, a reversed cross-reference, a cancelled line, a
-superseded revision and a draft, each leading to a different disposition.
-Three laws (the chain in five domain skins; invoice routing through alias,
-risk override, FX and aggregation; on-call paging through process alias,
-tier-adjusted severity, a team merger and a time-zone handover).
-
-The wrong options are not random. Each is the answer a **named mistake**
-produces — wall-clock time across a clock change, an inclusive end date, a
-365-day basis, tax counted in net cost — and the record says which
-(`mistakes: {option_id: mistake}`), so a trained readout is graded on the law
-and not the surface. Clock changes follow the US and EU rules from first
-principles in stdlib, and every evidence text states the change it relies on.
-
-```bash
-PYTHONPATH=src python -m jobe.worlds.temporal_numeric --n 2000 --seed 0 --out temporal_numeric.jsonl
-PYTHONPATH=src python -m jobe.worlds.temporal_numeric --n 500 --check-contamination <jevbench clone>
-```
-
-Records are reproducible from the seed, carry a stable `train`/`heldout` split
-(≈10 % held out by id hash) and the rationale, and convert to a `Decision` with
-`to_decision`. Nothing in them is JevBench text: the contamination check fails
-on any 10-word run shared with the public task files, and it caught my own
-first draft, which had paraphrased two of their rule sentences too closely.
+The exact-law generators — temporal_numeric (eleven laws), long_policy (six),
+multi_hop (three, one in five domain skins) — were built here and moved to
+[TheLab](https://github.com/MantisShrimpdev/TheLab) (`thelab.decisions.worlds`)
+together with the control-battery verdicts and the calibration code, because
+they take a records file and never touch a model. `jobe.records.to_decision`
+turns a generated record into a `Decision` for this readout. The hard-tier gap
+they exist to close is knowledge, not thinking depth (see `bench/RESULTS.md`).
 
 ## Known limits
 
@@ -256,10 +219,10 @@ src/jobe/
   readout.py   one forward pass, last-position logits, restricted softmax
   model.py     frozen backbone loading; device and attention resolved once
   orders.py    score under several option orders, average, report the flip rate
-  calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
+  calibrate.py re-exports TheLab's temperature fitting and calibration report
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
-  worlds/      exact-law generators: synthetic decisions whose answers are computed by code
-tests/         96 tests; a few need a tokenizer, two are opt-in on a real GPU, three need a JevBench clone
+  records.py   a TheLab decision record as a Decision
+tests/         52 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next
@@ -306,8 +269,8 @@ The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
 baseline. What follows it, in order: **submit** (item 8 — the held-out number
 is the one that counts), then **training** on the families where the model
 reproduces the same wrong answer — temporal_numeric, long_policy, multi_hop —
-from exact-law generators (`jobe.worlds`: temporal_numeric, long_policy and
-multi_hop are built), LoRA on the frozen backbone, CE on the option slots plus a Brier
+from exact-law generators (TheLab's `thelab.decisions.worlds`: temporal_numeric,
+long_policy and multi_hop are built), LoRA on the frozen backbone, CE on the option slots plus a Brier
 term, gated by E1 and `bench/gate.py` and compared to `v0.1.0` through the same
 harness.
 
