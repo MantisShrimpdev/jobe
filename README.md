@@ -161,7 +161,8 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
 
 Only after those plateau is training worth considering.
 
-## Attribution
+## License and attribution
 
-The decision protocol is adapted from [TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf)
-(MIT). See `NOTICE`.
+**MIT** — see `LICENSE`. The decision protocol is adapted from
+[TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf), also MIT; see `NOTICE`
+for what was taken and what was changed.

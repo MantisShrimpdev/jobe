@@ -3,6 +3,7 @@ name = "jobe"
 version = "0.1.0"
 description = "Local frozen-backbone decision readout: classify over declared options in one forward pass, never generate."
 requires-python = ">=3.10"
+license = {file = "LICENSE"}
 dependencies = ["torch>=2.4", "transformers>=4.44"]
 
 [project.optional-dependencies]
