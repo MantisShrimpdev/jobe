@@ -14,7 +14,8 @@ pricing convention for a 4B: **74.9**, against SemIf's published 74.7 and Jev's
 75.4, with the judge tier unmeasured and held-out unseen (`bench/RESULTS.md`).
 No training has happened — v1 freezes the backbone entirely, which is the
 design, not a shortcut. Three of the top five open systems are frozen
-backbones.
+backbones. Tag **`v0.1.0`** pins this exact state — weights revision, prompt
+version, adapter and run — so every later change is measured against it.
 
 ```python
 from jobe import Decision, Option, load, score
@@ -184,6 +185,12 @@ refuses the whole call up front, not after half of it has been paid for.
 - **A weak backbone produces a confident reflex, not a decision.** TinyLlama-1.1B
   answered the same letter on every case at p ≈ 0.98, scoring exactly the base
   rate. Run the control battery before believing any accuracy number.
+- **What `confidence()` *is* good for: handing off.** On good input it does find
+  the readout's own wrong answers — hard tier AUROC 0.79, the least-confident
+  quartile 15% accurate against 83% for the most. Use a threshold (≈0.57 on
+  JevBench hard) to route to a person or a larger model. Not to a thinking pass
+  of the same backbone: measured, that fixes 8 and breaks 3 of 33, and 15 of
+  the 21 shared misses are the identical wrong answer (`bench/RESULTS.md`).
 
 ## Verifying a backbone
 
@@ -239,8 +246,21 @@ tests/         58 tests; a few need a tokenizer, two are opt-in on a real GPU
    on a 2k-token document, logits within two bf16 ulps, 0/8 flips. Batched
    suffixes too: **1.9× over serial, ~15× over uncached at batch 2**; batch 8
    is slower than serial on a 10 GB card.
+10. ~~Reason only when unsure.~~ Done — **it does not pay.** Routing the 30%
+    least-confident hard decisions to a budget-forced 512-token thinking pass
+    lifts hard 0.604 → 0.649 (8 fixed, 3 broken, p = 0.23) for ~14 s per hard
+    decision, and under the composite the thinking tokens cost more than that
+    earns: 74.85 → 73.62. Free thinking never terminates on this backbone at any
+    cap. The finding underneath: when both modes miss, 71% of the time it is the
+    *same* wrong answer — a knowledge gap, not a thinking gap.
 
-Only after those plateau is training worth considering.
+The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
+baseline. What follows it, in order: **submit** (item 8 — the held-out number
+is the one that counts), then **training** on the families where the model
+reproduces the same wrong answer — temporal_numeric, long_policy, multi_hop —
+from exact-law generators, LoRA on the frozen backbone, CE on the option slots
+plus a Brier term, gated by E1 and `bench/gate.py` and compared to `v0.1.0`
+through the same harness.
 
 ## License and attribution
 
