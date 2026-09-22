@@ -539,6 +539,59 @@ wrong answer. If thinking barely moved this model, a re-ask should move it
 less. The order-disagreement rate is the number I am least sure of and the one
 most worth having.
 
+### The top-two runoff — measured, and it measures position, not judgement
+
+| band | n | first pass | runoff | Δ | fixed | broken | ceiling |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 0.45 – 0.85 | 39 | 0.667 | 0.667 | **+0.000** | 2 | 2 | 0.846 |
+| 0.00 – 0.45 | 14 | 0.071 | 0.214 | **+0.143** | 2 | 0 | 0.357 |
+
+Seven recoverable decisions in the contested band and it recovered none of them
+net. Four in the bottom band and it took two, breaking nothing.
+
+**What the two orders reveal is worth more than the headline.** Scoring each
+pair both ways was a guard against a biased design; it turned into the result:
+
+| condition | re-elects the first pass | accuracy |
+|---|---:|---:|
+| previous winner shown **first** | 71.8% | 0.590 |
+| previous winner shown **second** | 92.3% | 0.667 |
+
+The model prefers whatever sits in the second slot by about twenty points, in a
+prompt with **two** options and nothing else to distract it. The
+winner-shown-second column is simply the first pass re-elected, which is why it
+inherits its 0.667; the winner-shown-first column is the position bias
+overriding a judgement that was right two times in three. The orders disagree
+on 25.6% of contested pairs and 35.7% of bottom-band ones.
+
+So a narrower menu did not make the model read the evidence again. It made the
+slot matter more. Menu size is a real weakness, but shrinking the menu is not
+the lever — the decision was already made before the runoff was asked.
+
+**Three interventions, one law.** A LoRA adapter, a 512-token thinking pass and
+a two-option re-ask share no mechanism, and they behave identically across the
+bands:
+
+| intervention | below 0.45 | 0.45 – 0.85 |
+|---|---|---|
+| LoRA, three exact-law families | +6 / −0 | +9 / **−17** |
+| 512-token thinking pass | +4 / −0 | +4 / −3 |
+| top-two runoff | +2 / −0 | +2 / −2 |
+
+Everything helps where the model is lost and nothing helps where it is
+undecided. The bottom band is 6% of the benchmark and cheap to recover. The
+contested 30% has now resisted three different attacks, and the one that tried
+hardest did the most damage.
+
+**Scoring the prediction.** Registered before the run: +0.00 to +0.08 on the
+contested band (got +0.000, at the boundary), near zero at the bottom (**wrong**
+— got +0.143, two of the four available), 15–30% order disagreement (got 25.6%
+and 35.7%). The reasoning I gave for the fix was also wrong in its direction: I
+argued that always placing the previous winner first would make the runoff
+"mostly confirm itself", and in fact that placement *disagrees* most. The fix
+was still necessary; a single-order runoff would have reported −0.077 or
++0.000 depending purely on which slot the incumbent got.
+
 ### The same band re-decides the routed-reasoning result
 
 The routed pass was judged as one rule — think on the bottom 30% of hard tasks
