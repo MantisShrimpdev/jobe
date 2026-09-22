@@ -83,6 +83,8 @@ ap.add_argument("--mode", choices=["sampled", "budgeted"], required=True)
 ap.add_argument("--cap", type=int, default=2048)
 ap.add_argument("--budget", type=int, default=512)
 ap.add_argument("--frac", type=float, default=0.5)
+ap.add_argument("--max-conf", type=float, default=None,
+                help="route every hard task under this confidence instead of a fixed quantile; the threshold is the rule, and the count is whatever the model is unsure about that day")
 ap.add_argument("--limit", type=int, default=0)
 ap.add_argument("--attn", default="sdpa")
 ap.add_argument("--model", required=True, help="local path or hub id of the backbone")
@@ -95,8 +97,14 @@ official = [json.loads(l) for l in open(args.official, encoding="utf-8") if l.st
 hard_rows = [r for r in official if r["task_id"].startswith("hard-") and r.get("ok") and r.get("probs")]
 hard_rows.sort(key=lambda r: max(r["probs"].values()))
 n_hard = len(hard_rows)
-k_route = round(n_hard * args.frac)
-routed_rows = hard_rows[:k_route]
+if args.max_conf is not None:
+    routed_rows = [r for r in hard_rows if max(r["probs"].values()) < args.max_conf]
+    if not routed_rows:
+        raise SystemExit(f"--max-conf {args.max_conf} selects no hard task; "
+                         f"the least confident is {max(hard_rows[0]['probs'].values()):.3f}")
+else:
+    routed_rows = hard_rows[:round(n_hard * args.frac)]
+k_route = len(routed_rows)
 tasks = {json.loads(l)["id"]: json.loads(l) for l in open(args.tasks, encoding="utf-8") if l.strip()}
 by_id = {r["task_id"]: r for r in hard_rows}
 
@@ -110,7 +118,8 @@ todo = [r for r in routed_rows if r["task_id"] not in done]
 if args.limit:
     todo = todo[: args.limit]
 cutoff = max(routed_rows[-1]['probs'].values()) if routed_rows else float('nan')
-print(f"hard n={n_hard}  routed={k_route} (conf <= {cutoff:.3f})  "
+rule = f"conf < {args.max_conf}" if args.max_conf is not None else f"bottom {args.frac:.1%}"
+print(f"hard n={n_hard}  routed={k_route} by [{rule}] (conf <= {cutoff:.3f})  "
       f"done={len(done)}  todo={len(todo)}  mode={args.mode} cap={args.cap} budget={args.budget}")
 
 if todo and not args.report_only:
