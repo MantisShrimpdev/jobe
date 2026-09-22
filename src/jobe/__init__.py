@@ -24,14 +24,17 @@ answer to be something other than one of the declared ids.
 Protocol adapted from TheoLeeCJ/SemIf (MIT). See NOTICE.
 """
 
-from .calibrate import (
-    CalibrationReport,
-    brier_score,
-    calibration_report,
-    fit_temperature,
-    negative_log_likelihood,
-    softmax_with_temperature,
-)
+try:  # calibration lives in TheLab (optional extra `lab`); the readout itself never needs it
+    from .calibrate import (
+        CalibrationReport,
+        brier_score,
+        calibration_report,
+        fit_temperature,
+        negative_log_likelihood,
+        softmax_with_temperature,
+    )
+except ImportError:  # pragma: no cover - TheLab not installed
+    pass
 from .model import LoadedModel, load, pick_device
 from .orders import (
     AveragedReadout,
@@ -109,3 +112,5 @@ __all__ = [
     "slot_token_ids",
     "verify_boundary",
 ]
+
+__all__ = [n for n in __all__ if n in globals()]   # names that need TheLab are absent without it
