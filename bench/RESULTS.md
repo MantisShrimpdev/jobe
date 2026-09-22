@@ -465,10 +465,12 @@ asking where the lora-3fam-v1 adapter actually changed an answer:
 Three populations, not one. Two tasks in three come back above 0.85 and are
 right 96% of the time; a LoRA on eight attention layers moved 1% of them and
 a thinking pass would be spending its budget on settled questions. One task in
-six-and-a-half comes back below 0.45, where the model is right 6.7% of the
-time — below chance for a menu of three to five, so at its least sure it is not
-guessing, it is being actively misled. Everything contested lives in between:
-30% of the benchmark, 64% accurate.
+six-and-a-half comes back below 0.45, where the model is right once in fifteen
+against the 3.33 that uniform guessing over those menus would give. That gap
+does not clear significance on fifteen items — P(X ≤ 1) under uniform guessing
+is 0.12 — so it is a direction, not a finding; what *is* solid is that the band
+is near or below chance and nothing in it is being answered. Everything
+contested lives in between: 30% of the benchmark, 64% accurate.
 
 **The training run's whole −4 is the middle band.** Below 0.45 it fixed six and
 broke none, because there was nothing there to break. Above 0.85 it was a
