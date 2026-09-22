@@ -34,11 +34,14 @@ Index's reference engine uses. Neither is measured to be better here yet; the
 default is the one whose failure mode is not systematic.
 
 WHAT DOES NOT CHANGE. `score` and its letter slots are untouched and remain the
-default path for two to sixteen options: they are what every number in
-`bench/RESULTS.md` was measured on. Prefer them where they apply, and prefer a
-hierarchy over a wide menu where a taxonomy exists at all - menu size is this
-family's measured weakness, and answering a 128-way question is not the same as
-answering it well.
+default path for two to sixteen options, and that is now measured rather than
+assumed: across the 231 public JevBench tasks the letter readout scores 0.801
+against this module's 0.792, wins the standard tier by 4.2 points, runs about a
+quarter faster, and is the more decisive of the two (mean top probability 0.838
+against 0.768). Prefer letters wherever they apply. Prefer a hierarchy over a
+wide menu where a taxonomy exists at all - menu size is this family's measured
+weakness, and answering a 128-way question is not the same as answering it
+well. Reach for this module when the menu genuinely will not fit in sixteen.
 """
 
 from __future__ import annotations

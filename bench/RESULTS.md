@@ -451,6 +451,35 @@ anchoring: a KL-to-the-frozen-base term on decisions the base already answers
 well, so learning the three families cannot move the rest. That is the next
 change to the loop, and the next run is judged the same way.
 
+## Letter readout vs option-text readout — letters win where both apply (2026-09-23)
+
+`jobe.textscore.score_text` scores each option's own id as a continuation of the
+prompt instead of reading one answer letter, which removes the sixteen-option
+ceiling the letter protocol inherits from having sixteen letters. Whether it
+should therefore become the default is a separate question, and this is the
+measurement: same backbone, same 231 tasks, same option mapping, both readouts
+in one process off one model load, length normalisation on.
+
+| tier | n | letter | text | Δ | letter ms | text ms |
+|---|---:|---:|---:|---:|---:|---:|
+| easy | 48 | 0.979 | 0.979 | +0.000 | 117 | 232 |
+| standard | 72 | 0.972 | 0.931 | **−0.042** | 109 | 166 |
+| hard | 111 | 0.613 | 0.622 | +0.009 | 1046 | 1271 |
+| all | 231 | 0.801 | 0.792 | −0.009 | 561 | 710 |
+
+They agree on 204 of 231 (88.3%); text fixes 11 and breaks 13, and no task
+failed to score. The standard-tier losses are all `choice` items and all in
+routing and intent, where the option ids are words of unequal token length and
+the length normalisation is doing real work. Text is also the less decisive
+readout — mean top probability 0.768 against 0.838 — which matters because
+calibration is a scored axis.
+
+**Letters stay the default; text stays the fallback above sixteen options.**
+Note what this does and does not establish: every task here has between two and
+six options, so the comparison is entirely inside the range where the letter
+readout applies. It says letters are better *where both work*. It says nothing
+about the regime text exists for, which no public JevBench task reaches.
+
 ## What this does not cover
 
 - **Order averaging is still unrun as a scoring mode.** E2 measured the flip
