@@ -25,14 +25,33 @@ TIERS = {"easy": "easy", "original": "standard", "hard": "hard"}
 ORDER = ("easy", "standard", "hard")
 
 
-def read(path: str) -> dict[str, dict]:
-    rows = {}
+def _rows(path: str) -> list[dict]:
+    """Read a results file, and say something useful if it is the wrong one.
+
+    Two runners write results here. `bench/jobe_direct.py` under the official
+    CLI writes the scored per-item schema these tools read; `bench/run_jevbench.py`
+    writes a richer unscored file keyed on `id`. Handed the second, every tool
+    downstream used to die on `KeyError: 'task_id'`, which names the symptom
+    and not the cause.
+    """
+    out = []
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             if line.strip():
-                r = json.loads(line)
-                rows[r["task_id"]] = r
-    return rows
+                out.append(json.loads(line))
+    if out and "task_id" not in out[0]:
+        keys = ", ".join(sorted(out[0])[:6])
+        raise SystemExit(
+            f"{path} is a run_jevbench.py results file (keys: {keys}...), not a "
+            "scored one. Convert it first with:" + chr(10) +
+            "  python bench/to_official_records.py --jevbench <clone> "
+            f"--tasks <tasks.jsonl> --results {path} --out <scored>.jsonl"
+        )
+    return out
+
+
+def read(path: str) -> dict[str, dict]:
+    return {r["task_id"]: r for r in _rows(path)}
 
 
 def tier_of(task_id: str) -> str:

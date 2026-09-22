@@ -24,10 +24,33 @@ import argparse
 import json
 
 
-def read(path: str) -> dict[str, dict]:
+def _rows(path: str) -> list[dict]:
+    """Read a results file, and say something useful if it is the wrong one.
+
+    Two runners write results here. `bench/jobe_direct.py` under the official
+    CLI writes the scored per-item schema these tools read; `bench/run_jevbench.py`
+    writes a richer unscored file keyed on `id`. Handed the second, every tool
+    downstream used to die on `KeyError: 'task_id'`, which names the symptom
+    and not the cause.
+    """
+    out = []
     with open(path, encoding="utf-8") as fh:
-        rows = [json.loads(l) for l in fh if l.strip()]
-    return {r["task_id"]: r for r in rows}
+        for line in fh:
+            if line.strip():
+                out.append(json.loads(line))
+    if out and "task_id" not in out[0]:
+        keys = ", ".join(sorted(out[0])[:6])
+        raise SystemExit(
+            f"{path} is a run_jevbench.py results file (keys: {keys}...), not a "
+            "scored one. Convert it first with:" + chr(10) +
+            "  python bench/to_official_records.py --jevbench <clone> "
+            f"--tasks <tasks.jsonl> --results {path} --out <scored>.jsonl"
+        )
+    return out
+
+
+def read(path: str) -> dict[str, dict]:
+    return {r["task_id"]: r for r in _rows(path)}
 
 
 def confidence(row: dict) -> float:
