@@ -15,7 +15,12 @@ ap.add_argument("--jevbench", required=True, help="path to the jevbench clone")
 ap.add_argument("--official-score", default="bench/runs/2026-09-22-public231/official_score.json")
 ap.add_argument("--usd", type=float, default=0.022, help="cost assumption behind the baseline composite")
 ap.add_argument("--measured-hard-delta", type=float, default=None,
-                help="hard-tier accuracy gain measured at 30%% routing (0.045 on 2026-09-22): print the composite under it")
+                help="measured hard-tier accuracy gain for the rule being priced; prints the composite under it")
+ap.add_argument("--route-hard", type=float, default=0.30,
+                help="share of hard decisions the rule sends to the thinking pass")
+ap.add_argument("--route-std", type=float, default=2 / 72,
+                help="share of standard decisions it spills onto; this is the share that costs Speed")
+ap.add_argument("--label", default="", help="a name for the rule, printed with its row")
 args = ap.parse_args()
 sys.path.insert(0, args.jevbench)
 from jevbench.composite_v12 import cost  # noqa: E402
@@ -54,10 +59,13 @@ if args.measured_hard_delta is not None:
     d = args.measured_hard_delta
     acc_w = (0.6, 0.0, 0.2, 0.2)
     b_head, b_acc = score_with(I0, C0, S0, K0), score_with(I0, C0, S0, K0, acc_w)
-    print(f"\nmeasured hard delta {d:+.3f} at 30% routing (hard weight in this partial run {W_HARD_PARTIAL:.3f}):")
+    rule = f"{args.label}: " if args.label else ""
+    print()
+    print(f"{rule}measured hard delta {d:+.3f}, routing {args.route_hard:.1%} of hard "
+          f"and {args.route_std:.1%} of standard (hard weight in this partial run {W_HARD_PARTIAL:.3f}):")
     print(f"{'think tok':>9s} {'usd/1000':>9s} {'K':>6s} {'I':>6s} | {'headline':>9s} {'delta':>6s} | {'60:20:20':>9s} {'delta':>6s}")
     for T in (0, 256, 512):
-        usd = USD0 + 1000 * OUT_USD_PER_TOKEN * T * (HARD_SHARE * 0.3 + STD_SHARE * 2 / 72)
+        usd = USD0 + 1000 * OUT_USD_PER_TOKEN * T * (HARD_SHARE * args.route_hard + STD_SHARE * args.route_std)
         K = cost(usd)
         I = I0 + (100 * W_HARD_PARTIAL * d if T else 0.0)
         s, sa = score_with(I, C0, S0, K), score_with(I, C0, S0, K, acc_w)

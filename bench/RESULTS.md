@@ -481,6 +481,45 @@ This is the same 30% the routed-reasoning experiment spent its budget on, and
 it is the band any future intervention should be judged on. `bench/confidence_bands.py`
 produces the table.
 
+### The same band re-decides the routed-reasoning result
+
+The routed pass was judged as one rule — think on the bottom 30% of hard tasks
+by confidence — and it did not pay. Split by the same bands, it has the same
+signature as the training run:
+
+| baseline confidence | n | readout | after thinking | fixed | broken |
+|---|---:|---:|---:|---:|---:|
+| 0.00 – 0.45 | 15 | 0.067 | 0.333 | +4 | **−0** |
+| 0.45 – 0.85 | 18 | 0.333 | 0.389 | +4 | −3 |
+
+Thinking is free of risk below 0.45 and a coin toss above it — the same split a
+LoRA produced by a completely different mechanism. The rule that was tested
+routes both halves. An absolute threshold at 0.45 routes 15 of 111 hard tasks
+instead of 33, and **zero easy and zero standard tasks**, which matters because
+Speed is scored on the standard and judge tiers only: the tested rule spilled
+onto 2 standard decisions and this one spills onto none.
+
+Repricing both through the harness's own axis functions, at the budget that was
+actually measured (512 tokens):
+
+| rule | routed | hard Δ | headline | vs baseline | 60:20:20 | vs baseline |
+|---|---:|---:|---:|---:|---:|---:|
+| baseline, no thinking | — | — | 74.85 | 0 | 78.66 | 0 |
+| bottom 30% quantile | 33 hard + 2 std | +0.045 | 73.64 | −1.22 | 78.33 | −0.33 |
+| **confidence < 0.45** | **15 hard** | **+0.036** | **74.45** | **−0.40** | **78.89** | **+0.23** |
+
+Same measurement, same budget, a different threshold: the headline loss shrinks
+from −1.22 to −0.40 and the accuracy-weighted view turns from −0.33 to +0.23.
+It gives up one of the five net fixes and 55% of the bill. **"Reason when
+unsure" did not fail because thinking does not help. It failed because the rule
+was routing twice as many decisions as it should have**, and half of those were
+ones the readout was already getting right.
+
+At a 256-token budget the same arithmetic gives −0.05 headline and +0.53 on the
+accuracy view, which would make it free — but that row assumes the gain
+survives halving the budget, and that is not yet measured. `bench/route_composite.py`
+takes the rule as arguments now, so any threshold can be priced.
+
 ### A prediction, written before the anchored run was scored
 
 The anchored run (below) was launched before this analysis existed, so the
