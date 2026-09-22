@@ -146,8 +146,12 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
    tiers**. E1 destroys all above-chance skill *including on hard*
    (0.613 → 0.306, where gemma4-8B had not moved at all); E2 flip rate is 2.1%
    easy / 8.3% standard / 23.4% hard.
-6. Average **the hard tier only** and see whether it pays — the flip rates say
-   there is nothing to repair on easy or standard.
+6. ~~Average the hard tier and see whether it pays.~~ Done — **it does not.**
+   Accuracy 0.613 → 0.613 for double the forward passes; ECE moves 0.005. Of
+   the 11 answers averaging changed, it fixed 3 and broke 3. The 22.5% order
+   instability is symmetric noise, not a correctable bias — so a flip rate does
+   **not** predict whether averaging helps, which corrects what I claimed
+   earlier.
 7. A `/v1/systemone`-compatible server.
 
 Only after those plateau is training worth considering.

@@ -142,7 +142,53 @@ decision model's published figure**. Stability degrades with difficulty, and
 **Positional bias is mild and passing** — 29 / 33 / 37% concentration against
 ~25 / 26 / 29% expected, versus gemma4's 100%.
 
-### This answers the order-averaging question
+### Order averaging on the hard tier: measured, and it buys nothing
+
+The hard tier was the one place the flip rate suggested averaging might pay.
+It does not.
+
+| strategy | n | acc | Δacc | ECE | Δece | Brier | conf |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 order (declared) | 111 | 0.613 | — | 0.106 | — | 0.500 | 0.708 |
+| 2 orders (declared + reversed) | 111 | **0.613** | **+0.000** | 0.101 | −0.005 | 0.495 | 0.684 |
+
+**Zero accuracy change, and ECE improves by 0.005** — for double the forward
+passes. (The wall-clock multiple this run reported is not quotable: it executed
+while another process held the GPU, so its latency is polluted. The *nominal*
+cost is 2× passes.)
+
+The mechanism is worth stating exactly, because it is not what the flip rate
+implied:
+
+- 22.5% of tasks flip between the two orders — which agrees with E2's
+  independently measured 23.4%, a useful cross-check on both.
+- Averaging changed the final answer on **11 of 111** tasks.
+- Of those 11: it **fixed 3, broke 3**, and left 5 neutral.
+
+**Averaging is a coin flip here.** The instability is real but *symmetric* — it
+is noise, not a bias pointing consistently at the wrong answer. Averaging can
+only help when the instability is skewed toward errors, and it is not.
+
+### The correction this forces
+
+I claimed earlier — in the E2 write-up and in `decisionGate`'s own
+documentation — that measuring the flip rate tells you whether order averaging
+is worth paying for. **That is wrong.** The flip rate measures *instability*; it
+says nothing about *correctability*. A 23% flip rate is equally consistent with
+"averaging recovers half of those" and "averaging fixes as many as it breaks",
+and only a fixed-versus-broke count distinguishes them.
+
+The flip rate is still a valid control — a model whose answer moves under a
+no-op perturbation is worth knowing about, and at 100% it exposed a degenerate
+reflex. It is just not a proxy for the value of averaging.
+
+The earlier +8.2-point gain from averaging on gemma4-8B is consistent with this:
+there the instability *was* biased, because a position-0 collapse puts a
+different arbitrary option first in each order, so averaging recovered signal
+from a model that had none. That is repairing a broken readout, not improving a
+working one — and Qwen3.5-4B is a working one.
+
+### What the flip rate said before this measurement
 
 Averaging costs one forward pass per extra order and pays in proportion to the
 fragility it fixes. The flip rates say where that is:
@@ -151,9 +197,10 @@ fragility it fixes. The flip rates say where that is:
   repair, and on a stable model averaging measured a *loss* elsewhere.
 - **hard (23.4%): worth testing**, and only here.
 
-So the plan is not "average everything" but "average the hard tier", which is
-also where the latency budget can least afford it — a real trade to make
-deliberately rather than by default.
+That reasoning pointed at the hard tier, and the measurement above then showed
+even the hard tier does not pay. The conclusion stands but for a different
+reason than the flip rates suggested: **order averaging is not worth it for
+Qwen3.5-4B on any tier.**
 
 ### One honest caveat on confidence
 
