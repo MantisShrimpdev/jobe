@@ -142,10 +142,13 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
    the standard tier, on identical prompts. And a **single global temperature
    does not transfer across tiers** — it helps one and hurts the other, in
    opposite directions for the two backbones.
-5. Run `--orders reversed` for a real flip rate; run EveryAppKit's
-   `decisionGate` per tier, since accuracy alone cannot tell competence from an
-   answer-shaped reflex.
-6. A `/v1/systemone`-compatible server.
+5. ~~Control battery.~~ Done — `bench/gate.py`, **GATE PASSED on all three
+   tiers**. E1 destroys all above-chance skill *including on hard*
+   (0.613 → 0.306, where gemma4-8B had not moved at all); E2 flip rate is 2.1%
+   easy / 8.3% standard / 23.4% hard.
+6. Average **the hard tier only** and see whether it pays — the flip rates say
+   there is nothing to repair on easy or standard.
+7. A `/v1/systemone`-compatible server.
 
 Only after those plateau is training worth considering.
 
