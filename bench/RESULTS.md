@@ -451,6 +451,54 @@ anchoring: a KL-to-the-frozen-base term on decisions the base already answers
 well, so learning the three families cannot move the rest. That is the next
 change to the loop, and the next run is judged the same way.
 
+## The uncertain band is where everything happens (2026-09-23)
+
+Splitting the v0.1.0 public run by the readout's own top probability, and then
+asking where the lora-3fam-v1 adapter actually changed an answer:
+
+| baseline confidence | n | share | accuracy | changed | fixed | broken |
+|---|---:|---:|---:|---:|---:|---:|
+| 0.00 – 0.45 | 15 | 6% | 0.067 | 6 (40%) | +6 | −0 |
+| 0.45 – 0.85 | 70 | 30% | 0.643 | 26 (37%) | +9 | **−17** |
+| 0.85 – 1.00 | 146 | 63% | 0.959 | 2 (1%) | +0 | −2 |
+
+Three populations, not one. Two tasks in three come back above 0.85 and are
+right 96% of the time; a LoRA on eight attention layers moved 1% of them and
+a thinking pass would be spending its budget on settled questions. One task in
+six-and-a-half comes back below 0.45, where the model is right 6.7% of the
+time — below chance for a menu of three to five, so at its least sure it is not
+guessing, it is being actively misled. Everything contested lives in between:
+30% of the benchmark, 64% accurate.
+
+**The training run's whole −4 is the middle band.** Below 0.45 it fixed six and
+broke none, because there was nothing there to break. Above 0.85 it was a
+non-event. Between them it fixed nine and broke seventeen. "It did not
+transfer" was the right verdict and the wrong description: it transferred
+precisely where the base was already lost, and it churned where the base was
+marginally right.
+
+This is the same 30% the routed-reasoning experiment spent its budget on, and
+it is the band any future intervention should be judged on. `bench/confidence_bands.py`
+produces the table.
+
+### A prediction, written before the anchored run was scored
+
+The anchored run (below) was launched before this analysis existed, so the
+following is a real forecast rather than a description. A KL term costs the
+most where the base distribution is sharp and the least where it is flat —
+moving a 0.99 is expensive, moving a 0.65 is cheap. The damage above is
+concentrated at 0.45–0.85. **The anchor is therefore structurally weakest
+exactly where the problem is**, and the rehearsal share (30% of the gradient
+now coming from general multiple-choice rather than worlds) is likely to do
+more of the work than the KL term.
+
+So: the bottom band's +6 should mostly survive; the middle band should improve
+from −8 net but not reach zero (predict −5 to 0); standard should recover most
+of its −2; hard should land between −1 and +2; and held-out world accuracy
+should come in *below* lora-3fam-v1's 0.619, because 30% of the same step
+budget was spent on rehearsal. Under that forecast the ship rule — hard rises
+with easy and standard flat — is more likely to be missed than met.
+
 ## Letter readout vs option-text readout — letters win where both apply (2026-09-23)
 
 `jobe.textscore.score_text` scores each option's own id as a continuation of the
