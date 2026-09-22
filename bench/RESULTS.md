@@ -703,6 +703,31 @@ nothing there — as predicted, for the predicted reason: a KL term costs least
 where the base distribution is flat, and that is exactly where the damage is.
 It also broke one decision in the bottom band, where 3fam broke none.
 
+### The anchor did its job, measured directly
+
+Both adapters scored on the *same* held-out set — the worlds they were trained
+on and the MMLU rehearsal items that stand in for "general decisions the base
+could already make" — so this is the one comparison that isolates the recipe
+from the data split:
+
+| arm | worlds | MMLU rehearsal | rehearsal NLL | rehearsal ECE |
+|---|---:|---:|---:|---:|
+| base (`v0.1.0`) | 0.282 | 0.685 | 0.799 | 0.068 |
+| lora-3fam-v1, worlds only | 0.592 | 0.676 (**−0.009**) | 0.798 | 0.080 |
+| lora-anchor-v1 | **0.644** | **0.721 (+0.036)** | 0.678 | 0.055 |
+
+The worlds-only run lost general ability and got *less* calibrated on it. The
+anchored run gained general ability, lowered its NLL on it by a sixth, and
+improved its calibration — while beating the same run on the worlds it was
+trained for. Whatever else is true, the anchor plus rehearsal demonstrably did
+the thing it was built to do.
+
+**Which makes the JevBench result worse, not better.** Two independent proxies
+for "did this damage the model" — held-out worlds and held-out MMLU — both say
+no, emphatically, and the benchmark says yes. There is no version of "it
+forgot" that survives this table. It did not forget; it learned something that
+is wrong for the benchmark's own decisions.
+
 ### Scoring the prediction
 
 The forecast was committed before the run was scored. It was wrong five ways,
