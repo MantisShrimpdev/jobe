@@ -511,8 +511,27 @@ distribution over those two changes nothing, because the ordering is the
 ordering — the runoff is a fresh prompt, which is a different computation, and
 there is a measured reason to expect it to help. Menu size is this family's
 documented weakness, so a five-way question asked as a two-way question is being
-asked in the shape the model is best at. It costs one short forward pass on the
-third of decisions that are contested.
+asked in the shape the model is best at.
+
+Each pair is scored in **both orders** and averaged. The two candidates arrive
+sorted by the first pass, so prompting them that way would hand the previous
+winner slot A every time, and this backbone has a measured position bias
+(hard-tier concentration 0.396 against the 0.294 its menus imply). A runoff
+built that way would mostly confirm itself and look like a result. Two short
+forward passes on the third of decisions that are contested.
+
+**Registered before it ran.** On the 39 contested choice decisions the first
+pass scores 0.667 and the ceiling — how often the gold is in the top two at all
+— is 0.846, so the headroom is 7 decisions. On the 14 in the bottom band it is
+0.071 against a 0.357 ceiling, or 4 decisions. I expect **a small gain, +0.00
+to +0.08 on the contested band and near zero at the bottom**, and the two
+orders to disagree on 15–30% of pairs. The reason to expect little: the model
+ranked these two the way it did by reading the evidence, and a shorter menu
+does not change the reading. A 512-token thinking pass is a far heavier
+perturbation than a re-ask and it left 15 of 21 shared misses on the *identical*
+wrong answer. If thinking barely moved this model, a re-ask should move it
+less. The order-disagreement rate is the number I am least sure of and the one
+most worth having.
 
 ### The same band re-decides the routed-reasoning result
 

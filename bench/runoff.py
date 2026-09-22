@@ -14,8 +14,17 @@ size is this family's documented weakness (Verdict 97% at K=3 against 72% at
 K=25; Laya 0.425 on 77 labels), so a five-way question asked as a two-way
 question is being asked in the shape the model is best at.
 
-It is also cheap. A runoff costs one extra forward pass on a shorter prompt,
-and only for the third of decisions that are contested.
+BOTH ORDERS, ALWAYS. The two candidates arrive sorted by the first pass, so
+putting them in the prompt that way would hand the previous winner slot A every
+single time - and this backbone has a measured position bias (hard-tier
+concentration 0.396 against the 0.294 its menus imply). A runoff built that way
+would mostly confirm itself and look like a result. So each pair is scored in
+both orders and the two distributions are averaged, which is also exactly what
+the E2 control recommends for a narrow top-two gap. The disagreement between
+the orders is reported, because in this band it is the interesting number.
+
+It is cheap even so: two forward passes on a short prompt, and only for the
+third of decisions that are contested.
 
 ORDINAL QUESTIONS ARE EXCLUDED. A "rate this 1-5" is a scale, not a menu: the
 harness grades it by the expected value over the levels, and offering two of
@@ -124,17 +133,27 @@ def main(argv=None) -> int:
         if len(chosen) != 2:
             rows.append({"task_id": tid, "skipped": "option ids did not resolve"})
             continue
-        readout = score(backbone.model, backbone.tokenizer, Decision(
-            id=tid, evidence=task["state"], criterion=task["question"]["instructions"],
-            options=tuple(chosen), ordinal=kind == "score"))
-        probs = canonical(kind, readout.scores)
-        pred = max(probs.items(), key=lambda kv: kv[1])[0]
+        def ask(pair):
+            readout = score(backbone.model, backbone.tokenizer, Decision(
+                id=tid, evidence=task["state"], criterion=task["question"]["instructions"],
+                options=tuple(pair), ordinal=kind == "score"))
+            return canonical(kind, readout.scores), readout.total_seconds
+
+        # winner first, then winner second; the average is the answer of record
+        probs_a, sec_a = ask(chosen)
+        probs_b, sec_b = ask(list(reversed(chosen)))
+        avg = {k: (probs_a.get(k, 0.0) + probs_b.get(k, 0.0)) / 2 for k in probs_a}
+        best = lambda d: max(d.items(), key=lambda kv: kv[1])[0]
+        pred_a, pred_b, pred = best(probs_a), best(probs_b), best(avg)
         rows.append({
             "task_id": tid, "family": r.get("family"), "type": kind, "expected": gold,
             "n_options": len(r["probs"]), "top2": top2, "gold_in_top2": gold in top2,
             "first_pred": r.get("predicted"), "first_correct": bool(r.get("correct")),
             "runoff_pred": pred, "runoff_correct": pred == gold,
-            "runoff_conf": max(probs.values()), "seconds": readout.total_seconds,
+            "pred_winner_first": pred_a, "pred_winner_second": pred_b,
+            "order_disagrees": pred_a != pred_b,
+            "correct_winner_first": pred_a == gold, "correct_winner_second": pred_b == gold,
+            "runoff_conf": max(avg.values()), "seconds": sec_a + sec_b,
         })
         if n % 20 == 0:
             print(f"  {n}/{len(contested)}", flush=True)
@@ -151,8 +170,14 @@ def main(argv=None) -> int:
     broke = [r for r in scored if r["first_correct"] and not r["runoff_correct"]]
     print(f"\n{len(scored)} decisions re-asked in {time.perf_counter() - t0:.0f}s "
           f"({sum(r['seconds'] for r in scored) / len(scored) * 1000:.0f} ms each)")
+    oa = sum(r["correct_winner_first"] for r in scored) / len(scored)
+    ob = sum(r["correct_winner_second"] for r in scored) / len(scored)
+    flips = sum(r["order_disagrees"] for r in scored)
     print(f"  first pass   {a:.3f}")
     print(f"  runoff       {b:.3f}   ({b - a:+.3f}; {len(fixed)} fixed, {len(broke)} broken)")
+    print(f"    winner in slot A  {oa:.3f}")
+    print(f"    winner in slot B  {ob:.3f}")
+    print(f"    the two orders disagree on {flips} of {len(scored)} ({flips / len(scored):.1%})")
     print(f"  ceiling      {ceiling:.3f}   (how often the gold was in the top two at all)")
     lost = [r for r in scored if not r["gold_in_top2"]]
     print(f"  {len(lost)} decisions could not be recovered by any runoff: the gold was not offered")
