@@ -483,6 +483,37 @@ This is the same 30% the routed-reasoning experiment spent its budget on, and
 it is the band any future intervention should be judged on. `bench/confidence_bands.py`
 produces the table.
 
+### Where the correct answer actually sits
+
+Joining the run to the task file gives the rank the correct option held in each
+decision's distribution — not just whether it won:
+
+| baseline confidence | n | correct is #1 | inside the top two | gold not in the top two |
+|---|---:|---:|---:|---:|
+| below 0.45 | 15 | 0.067 | 0.333 | 10 |
+| 0.45 – 0.85 | 70 | 0.614 | **0.871** | 9 |
+| above 0.85 | 146 | 0.959 | 0.993 | 1 |
+
+**In the contested band the answer is already in hand 87% of the time.** What
+is failing is not retrieval, it is the ordering of two candidates — and the gap
+between 0.614 and 0.871 is 18 decisions, larger than anything training or
+thinking has moved.
+
+One tempting reading is wrong and worth recording so it is not retried: below
+0.45 the correct option is not systematically the *second* choice. Its ranks
+there are #1 once, #2 four times, #3 six times, #4 three times, #5 once — taking
+the second choice instead would score 4 of 15 against the 3.3 uniform guessing
+expects. There is no free inversion at the bottom.
+
+The top-two result is a different matter, and `bench/runoff.py` tests it: re-ask
+each contested decision with only its two candidates. Renormalising the existing
+distribution over those two changes nothing, because the ordering is the
+ordering — the runoff is a fresh prompt, which is a different computation, and
+there is a measured reason to expect it to help. Menu size is this family's
+documented weakness, so a five-way question asked as a two-way question is being
+asked in the shape the model is best at. It costs one short forward pass on the
+third of decisions that are contested.
+
 ### The same band re-decides the routed-reasoning result
 
 The routed pass was judged as one rule — think on the bottom 30% of hard tasks
