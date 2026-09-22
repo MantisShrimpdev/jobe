@@ -6,16 +6,15 @@ next-token distribution in **one forward pass**. Nothing is generated, so there
 is no text to parse, nothing to repair, and no way for the answer to be
 something other than one of the ids you declared.
 
-**Status: the readout runtime works and lands in SemIf's band on the public
-JevBench tasks** — 0.801 overall with Qwen3.5-4B, hard tier 0.613 where SemIf
-publishes 0.595. Those two are **not statistically distinguishable** (z = 0.32
-on different task counts, ±8.9 points at 95%), so read it as "the protocol
-reproduces", not "we beat it" (`bench/RESULTS.md`). 45 tests pass; `llama-3.2-3b-instruct`
-answers 6/6 on a triage smoke set with sensible confidence gradation (0.41 on a
-genuinely ambiguous case, 0.99 on clear ones). No training has happened — v1
-freezes the backbone entirely, which is the design, not a shortcut. Three of the
-top five open systems on JevBench are frozen backbones, and the best of them
-sits 0.7 points behind a closed commercial model.
+**Status: conformance-clean through JevBench's own harness, scoring in
+SemIf's band.** 231/231 public tasks driven by their `Runner`, every result
+`strict_valid`, zero failures; 0.805 accuracy, hard tier 0.604. Scored with
+their `composite_v12` under their partial-run rule and their self-hosted
+pricing convention for a 4B: **74.9**, against SemIf's published 74.7 and Jev's
+75.4, with the judge tier unmeasured and held-out unseen (`bench/RESULTS.md`).
+No training has happened — v1 freezes the backbone entirely, which is the
+design, not a shortcut. Three of the top five open systems are frozen
+backbones.
 
 ```python
 from jobe import Decision, Option, load, score
@@ -154,7 +153,11 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
    instability is symmetric noise, not a correctable bias — so a flip rate does
    **not** predict whether averaging helps, which corrects what I claimed
    earlier.
-7. A `/v1/systemone`-compatible server.
+7. ~~Run through the official harness.~~ Done — 231/231, strict 1.000,
+   composite 74.9 under SemIf-class pricing. See `bench/README-submission.md`.
+8. **Submit**: weights pinned to `851bf6e8…` plus `bench/jobe_direct.py`. No
+   server is needed — Benchmark Heaven runs in-process adapters on their own
+   infrastructure, and the spec forbids a home endpoint.
 
 Only after those plateau is training worth considering.
 

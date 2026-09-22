@@ -10,6 +10,86 @@ leaderboard's tiers are larger (534 decisions) and its `standard` tier is not th
 same set as the `original` file used here. No rank is claimed. The comparison
 that matters below is backbone-vs-backbone on identical inputs.
 
+## Through the official harness — the numbers that count
+
+Everything above this section was measured with Jobe's own runner. This section
+is the same 231 public tasks driven by **JevBench's `Runner`** via
+`bench/jobe_direct.py`, scored by **JevBench's `summarize()` and
+`composite_v12`** unmodified. Artefacts: `bench/runs/2026-09-22-public231/`.
+
+**Conformance: 231/231 attempted, operational success 1.000, schema validity
+1.000, strict 1.000, 0 renormalised.** Every distribution Jobe returned was
+inside the pre-registered tolerance, not merely the headline one. This is the
+spec's Step 1 gate — *"all 231 items through the official MIT harness, zero
+parse failures"* — passed at its strictest reading.
+
+| tier | n | accuracy | ECE | Brier | p50 | p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| easy | 48 | **1.000** | 0.016 | 0.011 | 0.108 s | 0.144 s |
+| standard (`original`) | 72 | **0.986** | 0.046 | 0.036 | 0.107 s | 0.125 s |
+| hard | 111 | **0.604** | 0.133 | 0.500 | 0.224 s | **3.253 s** |
+| judge | — | *not public* | | | | |
+| **all** | 231 | **0.805** | 0.049 | 0.254 | | |
+
+Also from their summary: **paraphrase consistency 0.972** over 36 pairs (a
+metric never computed here before), macro accuracy 0.804, ordinal MAE 0.256.
+
+**Run-to-run jitter, stated.** Each tier differs from the earlier own-runner
+pass by exactly one task (48 vs 47, 71 vs 70, 67 vs 68). Same weights, same
+prompts, same device; bf16 CUDA kernels are not bitwise deterministic and
+near-tie decisions flip. Treat any single-run tier accuracy as ±1 task on top of
+its sampling interval. The two runners agreeing to within that is also the
+evidence that the own-runner numbers above were sound.
+
+### Axes, computed by `composite_v12`
+
+| axis | score | how |
+|---|---:|---|
+| Intelligence | **82.9** | partial run: judge absent, their renormalisation → easy 0.19 / standard 0.39 / hard 0.42 |
+| Calibration | **71.7** | mean of ECE term 73.3 (hard ECE 0.133) and fidelity term 70.1 (mean TVD 0.299 over 10 gold-distribution items) |
+| Speed | **88.4** | standard-tier p50 0.107 s / p95 0.125 s, endpoint `gpu` → ×2 + 0.15 s |
+| Cost | *assumed* | not measurable locally; see below |
+
+Two readings of those, both honest:
+
+- **The Intelligence figure is likely pessimistic.** Leaving judge out
+  renormalises hard from 30% to 42% of the axis, and hard is the weakest tier.
+  If judge behaved like standard for Jobe (SemIf scores 95.2% there),
+  Intelligence would be ≈ 86. It is not measured, so 82.9 stands — but the
+  direction of the bias is known.
+- **The fidelity half of Calibration costs about 3 points, not 30.** The feared
+  drag from mean TVD 0.299 lands the axis at 71.7 against an ECE-only 73.3 —
+  level with SemIf's published 72.6.
+
+### The composite
+
+Their `cost()` refuses a missing price and the geometric mean floors a missing
+axis at 1, so cost cannot be omitted. Benchmark Heaven prices self-hosted
+entrants at the hosted-provider reference rate for the weight class; SemIf, the
+same 4B class, is listed at ~$0.022 per 1,000 decisions. That is the defensible
+assumption, shown with its sensitivity:
+
+| assumed $/1k decisions | Cost axis | **JevBench Score** |
+|---:|---:|---:|
+| 0.010 | 70.0 | 77.9 |
+| **0.022 (SemIf's class)** | **59.7** | **74.9** |
+| 0.040 | 51.9 | 72.3 |
+
+For reference, published: **Jev 1.13.0 75.4 · SemIf 74.7** (I 85.9, C 72.6,
+S 83.7, K 59.5) · **#10 68.9**.
+
+Under the same-class price, Jobe scores **74.9 — within 0.2 of SemIf and 0.5 of
+Jev.** Across a 4× price range it stays between 72.3 and 77.9, all of which is
+above the #10 line. That is the strongest statement the evidence supports, and
+these are its conditions: a partial run with no judge tier, standard
+approximated by the 72-task cohort, speed on standard alone, cost assumed, and
+the held-out half unseen. Public-set placement is a floor.
+
+**One tail risk worth naming:** hard-tier p95 latency is **3.25 s** — the long
+policy documents. Speed is scored on standard+judge, not hard, so it does not
+enter the axis here; but if judge tasks are long documents, that tail would.
+Eager attention is O(n²) in prompt length; SDPA is the lever if it bites.
+
 ## The backbone was the lever
 
 | backbone | easy | original | hard | ALL | chance |
