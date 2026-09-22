@@ -44,7 +44,9 @@ pip install -e .                                   # torch, transformers
 cp bench/jobe_direct.py <jevbench>/jevbench/adapters/
 ( cd <jevbench> && git apply <jobe>/bench/jevbench-registration.patch )
 cd <jevbench> && JEVBENCH_WARM_LOAD=1 python -m jevbench.cli run --adapter jobe_direct \
-    --model D:/path/or/hub-id --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a ...
+    --tasks datasets/public/easy.jsonl,datasets/public/original.jsonl,datasets/public/hard.jsonl \
+    --endpoint Qwen/Qwen3.5-4B --model Qwen/Qwen3.5-4B --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a \
+    --results results.jsonl --ledger ledger.json --raw-dir raw --cap-usd 10
 ```
 
 ## Public-set numbers (their harness, `bench/runs/2026-09-22-public231/`)

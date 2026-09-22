@@ -91,7 +91,7 @@ cp bench/jobe_direct.py <jevbench>/jevbench/adapters/jobe_direct.py
 cd <jevbench>
 PYTHONPATH=<jobe>/src JEVBENCH_WARM_LOAD=1 \
 python -m jevbench.cli run \
-  --tasks datasets/public \
+  --tasks datasets/public/easy.jsonl,datasets/public/original.jsonl,datasets/public/hard.jsonl \
   --adapter jobe_direct \
   --endpoint Qwen/Qwen3.5-4B \
   --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a \
