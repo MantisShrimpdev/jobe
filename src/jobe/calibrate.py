@@ -122,8 +122,16 @@ def calibration_report(
     temperature: float = 1.0,
     n_bins: int = 10,
     min_bin_count: int = 1,
+    predictions: list[int] | None = None,
 ) -> CalibrationReport:
     """Accuracy, NLL, Brier, ECE and MCE over stored logits.
+
+    `predictions` overrides which option counts as the answer. It exists because
+    **argmax is not the prediction for an ordinal question** — a `score` answer
+    is the rounded probability-weighted value, which can differ from the
+    highest-probability level. Passing ordinal rows without it silently scores
+    them by argmax and skews accuracy and ECE together. Measured on 111 mixed
+    tasks: argmax-only gave ECE 0.133 where the ordinal-aware answer was 0.106.
 
     ECE is the occupancy-weighted gap between confidence and accuracy across
     equal-width bins. MCE is the worst such gap, restricted to bins holding at
@@ -139,18 +147,32 @@ def calibration_report(
     if not rows:
         raise ValueError("no rows")
 
+    if predictions is not None and len(predictions) != len(rows):
+        raise ValueError("predictions must be the same length as rows")
+
     buckets = [{"n": 0, "conf": 0.0, "hit": 0} for _ in range(n_bins)]
     hits = 0
     nll = 0.0
     brier = 0.0
-    for logits, index in zip(rows, gold):
+    for offset, (logits, index) in enumerate(zip(rows, gold)):
         probs = softmax_with_temperature(logits, temperature)
-        predicted = max(range(len(probs)), key=lambda i: probs[i])
+        predicted = (
+            predictions[offset]
+            if predictions is not None
+            else max(range(len(probs)), key=lambda i: probs[i])
+        )
         correct = predicted == index
         hits += correct
         nll -= math.log(max(probs[index], 1e-12))
         brier += brier_score(probs, index)
-        confidence = probs[predicted]
+        # TOP-LABEL confidence, matching JevBench's `ece_top_label`. For a plain
+        # classification this is the same as the probability of the prediction.
+        # They diverge only for an ordinal question, where the answer is a
+        # rounded expected value that need not be the highest-probability level
+        # - and the convention has to be pinned, or two correct implementations
+        # disagree. Measured: prob-of-prediction gave 0.126 where top-label
+        # gave 0.106 on the same 111 rows.
+        confidence = max(probs)
         slot = min(int(confidence * n_bins), n_bins - 1)
         buckets[slot]["n"] += 1
         buckets[slot]["conf"] += confidence

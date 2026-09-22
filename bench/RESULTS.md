@@ -47,10 +47,19 @@ accuracy against Jobe's, with the tier-mismatch caveat above:
 | SemIf (published) | 1.000 | 0.979 | 0.595 |
 | **Jobe + Qwen3.5-4B** | 0.979 | 0.972 | **0.613** |
 
-Close enough to call it protocol parity on the public set, with Jobe slightly
-ahead on the hard tier and slightly behind on easy. That is the expected result —
-it is the same protocol on the same weights — and it is the evidence that the
-readout is implemented correctly.
+**These are not distinguishable, and the comparison is weaker than it looks.**
+Jobe's hard figure is over the **111 public** hard tasks; SemIf's published
+figure is over the **full 220**. A two-proportion test on 0.613 vs 0.595 gives
+z = 0.32, p ≈ 0.75, and Jobe's own 95% interval is [0.520, 0.698] — ±8.9 points.
+"Slightly ahead on hard" is not a supportable claim and an earlier version of
+this document made it.
+
+What the numbers *do* support: Jobe is **in SemIf's band**, which is the expected
+result for the same protocol on the same weights, and is evidence the readout is
+implemented correctly rather than evidence of an improvement. Note also that
+`original` (72 tasks, the published Jev cohort) is **not** the leaderboard's
+`standard` tier (96 tasks), so that column is not a like-for-like comparison
+either.
 
 ## A single global temperature does not transfer
 
@@ -59,9 +68,9 @@ Fitted on `original`, reported held-out on the other two tiers:
 | backbone | fitted T | tier | ECE before | ECE after | NLL before | NLL after |
 |---|---:|---|---:|---:|---:|---:|
 | llama-3.2-3b | 3.952 | easy | 0.081 | **0.361** | 0.116 | 0.502 |
-| llama-3.2-3b | 3.952 | hard | 0.402 | **0.172** | 2.196 | 1.221 |
+| llama-3.2-3b | 3.952 | hard | 0.407 | **0.163** | 2.196 | 1.221 |
 | Qwen3.5-4B | 0.348 | easy | 0.016 | **0.010** | 0.020 | 0.014 |
-| Qwen3.5-4B | 0.348 | hard | 0.133 | **0.281** | 0.950 | 1.738 |
+| Qwen3.5-4B | 0.348 | hard | 0.106 | **0.272** | 0.950 | 1.738 |
 
 **Each temperature helps one tier and hurts the other, and the two backbones need
 opposite corrections.**
@@ -80,7 +89,7 @@ tiered benchmark. Options: fit per tier, fit against a difficulty estimate, or
 fit on a mixture that matches production traffic rather than on one tier.
 
 Note Qwen's raw ECE is already excellent where it is competent — **0.016 on easy,
-0.133 on hard, untouched**. Calibration may be a smaller problem than expected
+0.106 on hard, untouched**. Calibration may be a smaller problem than expected
 for this backbone; the honest move is to measure before correcting.
 
 ## Latency
@@ -220,3 +229,52 @@ evidence. The structural caveat stands — validate evidence before the call.
   build, so they are context rather than a like-for-like comparison.
 - **Public tasks only** (231 of 534), and the held-out half is where a
   leaderboard result would actually be decided.
+
+## Methodology, and its limits
+
+What holds up:
+
+- JevBench's own task files, mapped exactly as `jevbench/adapters/semif_direct.py`
+  maps them, so the prompts are the reference adapter's.
+- Every result **per tier**, never pooled — the aggregate is what hides a
+  degenerate tier.
+- **My metrics now provably reproduce JevBench's own**: ECE and accuracy agree to
+  0.0000 on all three tiers against `jevbench/metrics.py` unmodified. Getting
+  there took two fixes, both found by checking rather than assuming — see below.
+- GPU contention caught twice and the polluted timings discarded rather than
+  published.
+- One independent cross-check: `orders.flip_rate` (22.5%) agreed with E2's
+  separately computed 23.4%.
+- The composite formula verified by reproducing SemIf's published 74.7 from its
+  own published axes.
+
+Two bugs the cross-check against their code exposed, after these numbers were
+first written up:
+
+1. **Ordinal questions were scored by argmax.** A `score` answer is the rounded
+   probability-weighted value, which need not be the highest-probability level.
+   `calibration_report` now takes an explicit `predictions` list. This moved
+   hard-tier accuracy by one task and ECE by 0.027.
+2. **"Confidence" was ambiguous.** I used the probability *of the prediction*;
+   JevBench's `ece_top_label` uses the **top-label** probability. Identical for
+   classification, divergent for ordinal. Pinned to their convention.
+
+What still limits every number here:
+
+- **Public tasks only** — 231 of 534. Worse for comparisons: the leaderboard's
+  published per-tier figures are over the **full** tiers (hard = 220), so even
+  the hard-tier comparison is 111 tasks against 220.
+- **`original` is not `standard`.** 72 tasks (the published Jev cohort) versus
+  their 96. Do not read that column across.
+- **No judge tier at all**, which is 28% of the leaderboard's Intelligence axis.
+  A composite score therefore cannot be computed, only guessed at.
+- **Single run, single seed.** E1's derangement used seed 42 once; nothing is
+  repeated. At n=111 a hard-tier accuracy carries ±8.9 points at 95%, so
+  differences smaller than about 10 points are not measurements.
+- **Calibration is half-measured** — the ECE half only. The probability-fidelity
+  component (total variation against exact gold distributions on 20 items) is
+  not computed.
+
+The backbone result survives all of this comfortably: 0.801 vs 0.545 on the same
+231 tasks is z = 5.9, p < 1e-10. The fine-grained comparisons against published
+entrants do not.

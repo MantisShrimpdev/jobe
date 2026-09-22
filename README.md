@@ -6,9 +6,11 @@ next-token distribution in **one forward pass**. Nothing is generated, so there
 is no text to parse, nothing to repair, and no way for the answer to be
 something other than one of the ids you declared.
 
-**Status: the readout runtime works, and reaches SemIf parity on the public
-JevBench tasks** — 0.801 overall with Qwen3.5-4B, hard tier 0.613 against SemIf's
-published 0.595 (`bench/RESULTS.md`). 45 tests pass; `llama-3.2-3b-instruct`
+**Status: the readout runtime works and lands in SemIf's band on the public
+JevBench tasks** — 0.801 overall with Qwen3.5-4B, hard tier 0.613 where SemIf
+publishes 0.595. Those two are **not statistically distinguishable** (z = 0.32
+on different task counts, ±8.9 points at 95%), so read it as "the protocol
+reproduces", not "we beat it" (`bench/RESULTS.md`). 45 tests pass; `llama-3.2-3b-instruct`
 answers 6/6 on a triage smoke set with sensible confidence gradation (0.41 on a
 genuinely ambiguous case, 0.99 on clear ones). No training has happened — v1
 freezes the backbone entirely, which is the design, not a shortcut. Three of the
