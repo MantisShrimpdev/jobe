@@ -191,7 +191,15 @@ the naive rule — six laws: approval routing by aggregated contract value, a
 water-damage claim through exclusion, exception and endorsement, alert routing
 through ordered runbook rules, payment-relief eligibility on a defined income,
 appeal admissibility on working days with closures, and a commercial returns
-decision.
+decision. `worlds/multi_hop.py` is identifier discipline: a root record names
+two identifiers that resolve through a directory, an inventory, a class table,
+a control register, a revision log and a status board, and only the record the
+exact chain reaches supplies the rule — while the file also holds a near-miss
+code, an unissued annotation, a reversed cross-reference, a cancelled line, a
+superseded revision and a draft, each leading to a different disposition.
+Three laws (the chain in five domain skins; invoice routing through alias,
+risk override, FX and aggregation; on-call paging through process alias,
+tier-adjusted severity, a team merger and a time-zone handover).
 
 The wrong options are not random. Each is the answer a **named mistake**
 produces — wall-clock time across a clock change, an inclusive end date, a
@@ -251,7 +259,7 @@ src/jobe/
   calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
   worlds/      exact-law generators: synthetic decisions whose answers are computed by code
-tests/         85 tests; a few need a tokenizer, two are opt-in on a real GPU, two need a JevBench clone
+tests/         96 tests; a few need a tokenizer, two are opt-in on a real GPU, three need a JevBench clone
 ```
 
 ## Next
@@ -298,8 +306,8 @@ The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
 baseline. What follows it, in order: **submit** (item 8 — the held-out number
 is the one that counts), then **training** on the families where the model
 reproduces the same wrong answer — temporal_numeric, long_policy, multi_hop —
-from exact-law generators (`jobe.worlds`; temporal_numeric and long_policy are
-built, multi_hop is not), LoRA on the frozen backbone, CE on the option slots plus a Brier
+from exact-law generators (`jobe.worlds`: temporal_numeric, long_policy and
+multi_hop are built), LoRA on the frozen backbone, CE on the option slots plus a Brier
 term, gated by E1 and `bench/gate.py` and compared to `v0.1.0` through the same
 harness.
 
