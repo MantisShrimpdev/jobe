@@ -456,11 +456,17 @@ change to the loop, and the next run is judged the same way.
 Splitting the v0.1.0 public run by the readout's own top probability, and then
 asking where the lora-3fam-v1 adapter actually changed an answer:
 
-| baseline confidence | n | share | accuracy | changed | fixed | broken |
+| baseline confidence | n | share | accuracy | answer moved | fixed | broken |
 |---|---:|---:|---:|---:|---:|---:|
-| 0.00 – 0.45 | 15 | 6% | 0.067 | 6 (40%) | +6 | −0 |
-| 0.45 – 0.85 | 70 | 30% | 0.643 | 26 (37%) | +9 | **−17** |
+| 0.00 – 0.45 | 15 | 6% | 0.067 | 9 (60%) | +6 | −0 |
+| 0.45 – 0.85 | 70 | 30% | 0.643 | 29 (41%) | +9 | **−17** |
 | 0.85 – 1.00 | 146 | 63% | 0.959 | 2 (1%) | +0 | −2 |
+
+"Answer moved" counts the decisions whose *prediction* changed, not just the
+ones whose correctness did: a wrong answer replaced by a different wrong answer
+leaves both accuracy columns untouched and is still the model being unstable.
+By that measure the adapter reached 60% of the bottom band and 41% of the
+contested one and **1% of the confident one**.
 
 Three populations, not one. Two tasks in three come back above 0.85 and are
 right 96% of the time; a LoRA on eight attention layers moved 1% of them and

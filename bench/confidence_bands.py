@@ -8,9 +8,11 @@ measured here - training, routed reasoning - does all of its work, good and bad.
 A change reported as a single tier number averages those two populations
 together and hides which one it touched.
 
-With `--candidate`, it also reports how many answers the second run changed in
-each band, which is the diagnostic that says whether an intervention went where
-it was aimed.
+With `--candidate`, it also reports how many answers the second run MOVED in
+each band, alongside how many it fixed and broke. The move count is the primary
+one: a wrong answer replaced by a different wrong answer leaves accuracy
+untouched and is still the model being unstable, which is exactly what an
+order study or a perturbation study is asking about.
 
   python bench/confidence_bands.py --results bench/runs/<a>/results.jsonl \
       [--candidate bench/runs/<b>/results.jsonl] [--bands 0.45 0.85]
@@ -55,7 +57,7 @@ def main(argv=None) -> int:
 
     head = f"{'baseline confidence':22s} {'n':>4s} {'share':>6s} {'accuracy':>9s}"
     if cand:
-        head += f" {'changed':>9s} {'fixed':>6s} {'broken':>7s}"
+        head += f" {'answer moved':>14s} {'fixed':>6s} {'broken':>7s}"
     print(head)
     for lo, hi in bands_of(args.bands):
         top = hi >= 1.0
@@ -69,9 +71,13 @@ def main(argv=None) -> int:
             ids = [r["task_id"] for r in group if r["task_id"] in shared]
             fixed = sum(1 for i in ids if not base[i]["correct"] and cand[i]["correct"])
             broken = sum(1 for i in ids if base[i]["correct"] and not cand[i]["correct"])
-            n = fixed + broken
-            line += f" {n:4d} {n/len(ids) if ids else 0:4.0%} {fixed:+6d} {-broken:+7d}"
-            row |= {"changed": n, "fixed": fixed, "broken": broken, "n_shared": len(ids)}
+            # The answer moving is the primary quantity: a wrong answer replaced by a
+            # different wrong answer changed nothing in the accuracy columns and is
+            # still the model being unstable, which is what an order or a perturbation
+            # study is actually asking about.
+            moved = sum(1 for i in ids if base[i].get("predicted") != cand[i].get("predicted"))
+            line += f" {moved:5d} {moved/len(ids) if ids else 0:8.0%} {fixed:+6d} {-broken:+7d}"
+            row |= {"moved": moved, "fixed": fixed, "broken": broken, "n_shared": len(ids)}
         print(line)
         out.append(row)
 
