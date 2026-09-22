@@ -6,7 +6,9 @@ next-token distribution in **one forward pass**. Nothing is generated, so there
 is no text to parse, nothing to repair, and no way for the answer to be
 something other than one of the ids you declared.
 
-**Status: the readout runtime works.** 45 tests pass; `llama-3.2-3b-instruct`
+**Status: the readout runtime works, and reaches SemIf parity on the public
+JevBench tasks** — 0.801 overall with Qwen3.5-4B, hard tier 0.613 against SemIf's
+published 0.595 (`bench/RESULTS.md`). 45 tests pass; `llama-3.2-3b-instruct`
 answers 6/6 on a triage smoke set with sensible confidence gradation (0.41 on a
 genuinely ambiguous case, 0.99 on clear ones). No training has happened — v1
 freezes the backbone entirely, which is the design, not a shortcut. Three of the
@@ -135,8 +137,15 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
    to the fragility it fixes. Not yet validated at volume on a real task set.
 3. ~~One fitted temperature.~~ Built (`jobe.calibrate`) — golden-section on
    held-out NLL, no optimiser and no dependency. Also not yet fitted on real data.
-4. Run EveryAppKit's `decisionGate` against this backbone, per tier.
-5. A `/v1/systemone`-compatible server.
+4. ~~Measure on real tasks.~~ Done — `bench/RESULTS.md`. The backbone was the
+   lever: Qwen3.5-4B beats llama-3.2-3b by **+25.6 points overall** and +44.4 on
+   the standard tier, on identical prompts. And a **single global temperature
+   does not transfer across tiers** — it helps one and hurts the other, in
+   opposite directions for the two backbones.
+5. Run `--orders reversed` for a real flip rate; run EveryAppKit's
+   `decisionGate` per tier, since accuracy alone cannot tell competence from an
+   answer-shaped reflex.
+6. A `/v1/systemone`-compatible server.
 
 Only after those plateau is training worth considering.
 
