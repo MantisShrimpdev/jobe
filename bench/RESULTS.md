@@ -63,6 +63,13 @@ Two readings of those, both honest:
 
 ### The composite
 
+> **Rule change, 22 Sep 2026 — JevBench v1.3.0** scores Intelligence as chance-corrected accuracy per tier
+> (`(acc − chance)/(1 − chance)`, tier chances from their published option-count histograms: easy 0.284,
+> standard 0.317, hard 0.336, judge 0.292) and multiplies the score by `(I/50)²` below I = 50. Everything
+> below was computed under v1.2. Re-scored with their `composite_v13`: I 74.3 (hard tier 40.3 chance-corrected),
+> **JevBench Score 72.8** at the same $0.022 assumption (73.5 at our measured tokens), against SemIf 73.1,
+> Jev 74.4, djev 73.0, #10 66.6. Same band, same story: the hard tier is the whole gap.
+
 Their `cost()` refuses a missing price and the geometric mean floors a missing
 axis at 1, so cost cannot be omitted. Benchmark Heaven prices self-hosted
 entrants at the hosted-provider reference rate for the weight class; SemIf, the

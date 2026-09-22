@@ -59,11 +59,12 @@ cd <jevbench> && JEVBENCH_WARM_LOAD=1 python -m jevbench.cli run --adapter jobe_
 | all | 231 | 0.805 | 0.049 | | |
 
 Latencies are raw, on an RTX 3080 in-process, batch 1, `eager` attention;
-their ×2 + 0.15 s self-hosted adjustment applies. Axes under `composite_v12`
-with the judge tier absent (weights renormalised): I 82.9 · C 71.7 · S 88.4
-(standard tier) · K 61.9 at the pricing below → **JevBench Score 74.9–75.4**
-depending on the cost line; 72.3–77.9 across a 4× price band. A public-set
-estimate, not a placement.
+their ×2 + 0.15 s self-hosted adjustment applies. Axes under the live
+**v1.3.0** rule (`composite_v13`, Intelligence chance-corrected) with the judge
+tier absent (weights renormalised): I 74.3 · C 71.7 · S 88.4 (standard tier) ·
+K 61.8 at the pricing below → **JevBench Score 73.5** (72.8 at SemIf's
+tariff; 70.3–75.8 across a 4× price band; 74.9 under the previous v1.2 rule).
+A public-set estimate, not a placement.
 
 ## Pricing basis
 

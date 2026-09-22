@@ -20,22 +20,25 @@ readout alone.
 | hard | 111 | **0.604** | 0.133 | 224 ms |
 | all | 231 | **0.805** | 0.049 | |
 
-Scored with their `composite_v12`, beside the two systems above it on the
-board (their published axes):
+Scored with their **v1.3.0** rule (Intelligence chance-corrected per tier —
+the live board since 22 Sep 2026), beside the two systems above it (their
+published axes):
 
 | axis | **Jobe v0.1.0** | SemIf (#2) | Jev 1.13 (#1) |
 |---|---:|---:|---:|
-| Intelligence | 82.9 | 85.9 | 90.4 |
+| Intelligence (chance-corrected) | 74.3 | 79.0 | 85.7 |
 | Calibration | 71.7 | 72.6 | 82.7 |
 | Speed | **88.4** | 83.7 | 83.3 |
 | Cost | 59.7* | 59.5 | 52.0 |
-| **JevBench Score** | **74.9** | 74.7 | 75.4 |
+| **JevBench Score** | **72.8** | 73.1 | 74.4 |
 | hard-tier accuracy | 0.604 | 0.595 | 0.741 |
 
-\*Cost assumed at SemIf's self-hosted tariff; 72.3–77.9 across a 4× price
-band. This is a public-set run — the judge tier is not public and the
-held-out half is unseen — so it is an estimate of placement, not a placement.
-#10 on the board scores 68.9. Details, corrections and everything that did
+\*Cost assumed at SemIf's self-hosted tariff; 73.5 at Jobe's own measured
+token counts; 70.3–75.8 across a 4× price band. This is a public-set run —
+the judge tier is not public and the held-out half is unseen — so it is an
+estimate of placement, not a placement (with the judge tier at SemIf's level
+it would read 74.1). #10 on the board scores 66.6. Under the previous v1.2
+rule the same run scored 74.9. Details, corrections and everything that did
 *not* work: `bench/RESULTS.md`.
 
 **Speed, measured:** 36.9 ms per decision end to end (3B backbone, batch 1);
