@@ -48,8 +48,13 @@ class Decision:
     #: Ordinal questions are scored by probability-weighted value, not argmax.
     ordinal: bool = False
 
-    def validate(self) -> None:
-        """Raise :class:`DecisionError` on anything the protocol cannot express."""
+    def validate(self, *, max_options: int | None = MAX_OPTIONS) -> None:
+        """Raise :class:`DecisionError` on anything the protocol cannot express.
+
+        `max_options` is the letter protocol's ceiling by default. The text
+        readout (:mod:`jobe.textscore`) has no such ceiling - it scores an
+        option's own tokens rather than a letter slot - so it passes ``None``.
+        """
         if self.evidence is None or (
             isinstance(self.evidence, str) and not self.evidence.strip()
         ):
@@ -59,8 +64,11 @@ class Decision:
         n = len(self.options)
         if n < 2:
             raise DecisionError(f"{self.id}: need at least 2 options, got {n}")
-        if n > MAX_OPTIONS:
-            raise DecisionError(f"{self.id}: need at most {MAX_OPTIONS} options, got {n}")
+        if max_options is not None and n > max_options:
+            raise DecisionError(
+                f"{self.id}: need at most {max_options} options, got {n}; "
+                "score_text() reads option text and has no such ceiling"
+            )
         seen: set[str] = set()
         for option in self.options:
             if not option.id:
@@ -101,15 +109,37 @@ def build_messages(decision: Decision) -> list[dict[str, str]]:
     ]
 
 
-def render_prompt(tokenizer, decision: Decision) -> str:
-    """Apply the tokenizer's chat template, with thinking disabled.
+TEXT_SYSTEM_PROMPT = (
+    "Apply the supplied criterion to the supplied evidence. Choose exactly one listed option. "
+    "Respond with only that option's id, copied exactly, with no explanation or reasoning."
+)
 
-    `enable_thinking=False` is what keeps this usable on reasoning models: their
-    first generated token is otherwise a preamble ("Okay", "First", "<think>"),
-    never the answer, and the readout measures nothing. Tokenizers that do not
-    accept the flag simply ignore it.
+TEXT_PROMPT_VERSION = "jobe-options-text-v1"
+
+
+def build_text_messages(decision: Decision) -> list[dict[str, str]]:
+    """Render a decision for the TEXT readout: options carry their ids, not letters.
+
+    The letter form cannot express more than sixteen options because there are
+    sixteen answer letters. Here the answer is the option's own id, so the
+    payload shows ids and the model is asked to copy one - and there is no cap.
     """
-    messages = build_messages(decision)
+    decision.validate(max_options=None)
+    payload = {
+        "evidence": decision.evidence,
+        "criterion": decision.criterion,
+        "options": [
+            {"id": option.id, "description": option.description}
+            for option in decision.options
+        ],
+    }
+    return [
+        {"role": "system", "content": TEXT_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+
+def _apply_template(tokenizer, messages: list[dict[str, str]]) -> str:
     try:
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True, enable_thinking=False
@@ -118,6 +148,22 @@ def render_prompt(tokenizer, decision: Decision) -> str:
         return tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
+
+
+def render_text_prompt(tokenizer, decision: Decision) -> str:
+    """The text readout's prompt, ending where the option id begins."""
+    return _apply_template(tokenizer, build_text_messages(decision))
+
+
+def render_prompt(tokenizer, decision: Decision) -> str:
+    """Apply the tokenizer's chat template, with thinking disabled.
+
+    `enable_thinking=False` is what keeps this usable on reasoning models: their
+    first generated token is otherwise a preamble ("Okay", "First", "<think>"),
+    never the answer, and the readout measures nothing. Tokenizers that do not
+    accept the flag simply ignore it.
+    """
+    return _apply_template(tokenizer, build_messages(decision))
 
 
 def prompt_digest(text: str) -> str:
