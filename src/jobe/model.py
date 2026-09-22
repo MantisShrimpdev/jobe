@@ -8,6 +8,8 @@ this Python is installed.
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass
 
 
@@ -22,6 +24,7 @@ class LoadedModel:
     device: str
     dtype: str
     attn_implementation: str | None = None
+    adapter: str | None = None      # a merged LoRA adapter directory, when one was applied
 
 
 def pick_device(requested: str | None = None) -> str:
@@ -37,6 +40,21 @@ def pick_device(requested: str | None = None) -> str:
     return "cpu"
 
 
+def apply_adapter(model, lora_dir: str) -> int:
+    """Load a TheLab LoRA adapter onto `model` and merge it into the weights.
+
+    Returns the number of merged modules. The wrappers stay in place but are
+    inert once merged, so the readout, the prefix cache and the harness adapter
+    all see an ordinary model with the trained deltas folded in.
+    """
+    try:
+        from thelab.decisions.lora import load_lora, merge_lora
+    except ImportError as e:  # pragma: no cover
+        raise ImportError("applying a LoRA adapter needs TheLab: pip install -e <TheLab checkout>") from e
+    load_lora(model, lora_dir)
+    return merge_lora(model)
+
+
 def load(
     name: str,
     *,
@@ -44,6 +62,7 @@ def load(
     device: str | None = "auto",
     dtype: str | None = None,
     attn_implementation: str | None = "eager",
+    lora_dir: str | None = None,
 ) -> LoadedModel:
     """Load a causal LM in eval mode with gradients off.
 
@@ -59,6 +78,12 @@ def load(
             39.1 ms against SDPA's 50.4 ms. A decision prompt is short and
             un-batched, so SDPA's kernel overhead is not repaid. Pass ``"sdpa"``
             for long evidence, or ``None`` to let transformers choose.
+        lora_dir: a LoRA adapter saved by TheLab's training loop
+            (``lora.pt`` + ``lora.json``). Applied and merged into the frozen
+            weights, so every scoring path sees one plain model. Defaults to
+            the ``JOBE_LORA_DIR`` environment variable, which is how the
+            benchmark adapter and the gate pick an adapter up without a code
+            change. Needs TheLab installed only when actually used.
     """
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -74,6 +99,9 @@ def load(
         name, revision=revision, dtype=torch_dtype, **extra
     )
     model.to(resolved)
+    lora_dir = lora_dir if lora_dir is not None else os.environ.get("JOBE_LORA_DIR") or None
+    if lora_dir:
+        apply_adapter(model, lora_dir)
     model.eval()
     model.requires_grad_(False)
 
@@ -85,4 +113,5 @@ def load(
         device=resolved,
         dtype=dtype,
         attn_implementation=getattr(model.config, "_attn_implementation", attn_implementation),
+        adapter=lora_dir,
     )
