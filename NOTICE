@@ -13,6 +13,11 @@ This project contains code adapted from third-party open-source projects.
   verification is changed rather than copied - slots are resolved IN CONTEXT
   from encode(prompt + letter)[-1] instead of by encoding each letter
   standalone, which is what makes SentencePiece tokenizers usable.
+  Also adapted, from src/semif_phase1/serial.py: prefix-cache reuse - cut the
+  rendered prompt after the evidence value, drop the final token as a merge
+  guard, keep the KV cache from one pass, and score each question as a suffix
+  off a copy of it. Re-authored; the boundary and evidence-identity guards are
+  this project's.
 
 MIT-licensed portions are used under the terms of the MIT License; the original
 copyright and permission notices are retained via the per-module attribution

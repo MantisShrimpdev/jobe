@@ -40,6 +40,13 @@ from .orders import (
     score_averaged,
     total_variation,
 )
+from .prefix import (
+    PrefixError,
+    PrefixScorer,
+    evidence_key,
+    prefix_ids_for,
+    score_with_prefix,
+)
 from .prompt import (
     PROMPT_VERSION,
     SYSTEM_PROMPT,
@@ -61,6 +68,11 @@ from .slots import (
 )
 
 __all__ = [
+    "PrefixError",
+    "PrefixScorer",
+    "evidence_key",
+    "prefix_ids_for",
+    "score_with_prefix",
     "total_variation",
     "softmax_with_temperature",
     "score_averaged",

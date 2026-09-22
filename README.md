@@ -95,6 +95,50 @@ Two findings behind those numbers, both of which cost real time to run down:
   the distribution tightened to a 0.6 ms spread. A one-off timing on a busy GPU
   is not a measurement.
 
+## Prefix cache — many questions about one document
+
+The prompt puts evidence first so that it can be a reusable prefix, and
+`jobe.prefix` cashes that in. `PrefixScorer.prime(document)` runs the model
+once with its KV cache kept; each `score(decision)` then continues from a copy
+of that cache with only the question's suffix — `, "criterion": …, "options":
+[…]}` plus the assistant turn.
+
+```python
+from jobe import PrefixScorer
+
+scorer = PrefixScorer(backbone.model, backbone.tokenizer)
+scorer.prime(document)
+for d in decisions:            # every one with evidence=document
+    r = scorer.score(d)        # suffix only
+```
+
+Measured with `bench/prefix_bench.py` — Qwen3.5-4B, bf16, RTX 3080, a
+1,995-token document (prefix 1,921 tokens, suffix ~74), eight questions:
+
+| | per question | eight questions |
+|---|---:|---:|
+| uncached | 1,302 ms | 10.41 s |
+| **cached** | **117 ms** after a one-time 1,772 ms prime | **2.80 s** |
+
+**11× per question after the first; 3.7× over eight.** Break-even is the second
+question. Slot logits agree with the uncached path to within two bf16 ulps and
+the argmax never flipped (0/8). Qwen3.5's hybrid recurrent-state layers survive
+the cache copy correctly — that was the part least certain in advance, and the
+equality test is what settles it.
+
+Two guards, both fail-loud rather than degrade:
+
+- **The cached prefix must be a token-for-token prefix of every prompt it is
+  reused for.** Tokenizers merge greedily across boundaries, so the prefix drops
+  its final token (JSON punctuation can fuse with the end of the evidence) and
+  the full prompt's ids are checked against it before any forward pass.
+- **A decision whose evidence differs from the primed one is refused** with
+  `PrefixError`. It is never silently scored against another document's cache.
+
+This is the serial variant — one question at a time, one cache copy each
+(5–10 ms). Batching suffixes in parallel, SemIf's `shared.py`, is the remaining
+optimisation on top.
+
 ## Known limits
 
 - **16 options maximum** — one single-token letter each. Above roughly that,
@@ -127,7 +171,8 @@ src/jobe/
   model.py     frozen backbone loading; device and attention resolved once
   orders.py    score under several option orders, average, report the flip rate
   calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
-tests/         45 tests; only two need a tokenizer, none need a model or a GPU
+  prefix.py    encode the evidence once, score many questions as suffixes off the cache
+tests/         53 tests; a few need a tokenizer, one is opt-in on a real GPU
 ```
 
 ## Next
@@ -158,6 +203,9 @@ tests/         45 tests; only two need a tokenizer, none need a model or a GPU
 8. **Submit**: weights pinned to `851bf6e8…` plus `bench/jobe_direct.py`. No
    server is needed — Benchmark Heaven runs in-process adapters on their own
    infrastructure, and the spec forbids a home endpoint.
+9. ~~Prefix cache.~~ Done — `jobe.prefix`, **11× per question after the first**
+   on a 2k-token document, logits within two bf16 ulps, 0/8 flips. Serial only;
+   batched suffixes are the remaining SemIf optimisation.
 
 Only after those plateau is training worth considering.
 

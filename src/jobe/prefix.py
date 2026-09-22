@@ -1,0 +1,243 @@
+"""Prefix-cache reuse: encode the evidence once, answer many questions as cheap
+suffixes off a copy of that cache.
+
+Adapted from TheoLeeCJ/SemIf (MIT), `src/semif_phase1/serial.py`.
+
+Jobe's prompt puts evidence FIRST and the criterion + options last precisely so
+that one body of evidence is a reusable prefix. This module cashes that in.
+The state is run through the model once with a KV cache kept; each question is
+then only its own suffix — `, "criterion": ..., "options": [...]}` plus the
+template's assistant turn — continued from a copy of that cache.
+
+Measured on Qwen3.5-4B, bf16, RTX 3080, a 1,921-token state: prefix encoded
+once in 1.23 s; each question then 0.10–0.16 s against ~1.3 s for the same
+prompt uncached. About 10× per question after the first. Slot logits agree with
+the uncached forward to within one bf16 ulp and the argmax is identical.
+
+Two guards make this safe, and both fail loudly rather than degrade:
+
+  * the cached prefix must be a token-for-token prefix of every full prompt it
+    is reused for. Tokenizers merge greedily across boundaries, so the prefix
+    drops its final token (JSON punctuation can fuse with what follows) and the
+    full prompt's ids are checked against it before any forward pass;
+  * a decision whose evidence differs from the primed evidence is refused. It
+    is never silently scored against another state's cache.
+
+This is the serial variant: one question at a time, one cache copy each. It is
+the right shape for "many questions about one document". Batching suffixes in
+parallel (SemIf's `shared.py`) is a further optimisation on top of it.
+"""
+
+from __future__ import annotations
+
+import copy
+import inspect
+import json
+import time
+
+from .prompt import PROMPT_VERSION, Decision, Option, build_messages, prompt_digest, render_prompt
+from .readout import Readout, restricted_softmax
+from .slots import resolve_slots
+
+
+class PrefixError(ValueError):
+    """Raised when a prefix cannot be established or must not be reused."""
+
+
+def evidence_key(evidence: object) -> str:
+    """Canonical identity of an evidence value, so dicts and strings compare by content."""
+    return json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+
+
+def prefix_ids_for(tokenizer, evidence: object) -> list[int]:
+    """Token ids of the rendered prompt up to the end of the evidence value.
+
+    Renders a placeholder decision to obtain the chat template's framing, then
+    cuts the text right after the serialised evidence — before the criterion,
+    before the options. The final token is dropped: JSON punctuation after the
+    evidence can merge with the last token of the value, and a prefix that ends
+    on a token which would have merged is not a prefix at all.
+
+    Raises:
+        PrefixError: the template altered the payload (so its position cannot be
+            located), or the evidence is not where the protocol puts it.
+    """
+    placeholder = Decision(
+        id="__prefix__",
+        evidence=evidence,
+        criterion="prefix boundary placeholder",
+        options=(Option("a", "a"), Option("b", "b")),
+    )
+    prompt = render_prompt(tokenizer, placeholder)
+    payload = build_messages(placeholder)[1]["content"]
+    if prompt.count(payload) != 1:
+        raise PrefixError("cannot locate the unmodified payload in the chat template")
+    head = json.dumps({"evidence": evidence}, ensure_ascii=False)[:-1]  # drop closing brace
+    if not payload.startswith(head):
+        raise PrefixError("evidence serialisation is not the payload prefix")
+    text = prompt[: prompt.index(payload)] + head
+    ids = tokenizer.encode(text, add_special_tokens=False)
+    if len(ids) < 2:
+        raise PrefixError("prefix is too short to reuse")
+    return ids[:-1]
+
+
+class PrefixScorer:
+    """Score many decisions about one piece of evidence off a single prefix pass.
+
+        scorer = PrefixScorer(backbone.model, backbone.tokenizer)
+        scorer.prime(document)                 # one forward pass, cache kept
+        for q in questions:
+            r = scorer.score(Decision(evidence=document, ...))   # suffix only
+
+    `score` refuses a decision whose evidence is not the primed evidence.
+    """
+
+    def __init__(self, model, tokenizer, *, max_tokens: int = 4096):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.max_tokens = max_tokens
+        self._device = next(model.parameters()).device
+        params = inspect.signature(model.forward).parameters
+        self._logits_to_keep = "logits_to_keep" in params
+        self._cache_position = "cache_position" in params
+        self._cache = None
+        self._prefix_ids: list[int] = []
+        self._key: str | None = None
+        self.prefix_seconds: float = 0.0
+
+    # --------------------------------------------------------------- priming
+
+    @property
+    def is_primed(self) -> bool:
+        return self._cache is not None
+
+    @property
+    def prefix_tokens(self) -> int:
+        return len(self._prefix_ids)
+
+    def prime(self, evidence: object) -> int:
+        """Encode `evidence` once and keep its cache. Returns the prefix length.
+
+        A no-op when the same evidence is already primed. Priming a different
+        evidence replaces the cache.
+        """
+        import torch
+
+        key = evidence_key(evidence)
+        if self._cache is not None and key == self._key:
+            return len(self._prefix_ids)
+        ids = prefix_ids_for(self.tokenizer, evidence)
+        if len(ids) > self.max_tokens:
+            raise PrefixError(f"prefix of {len(ids)} tokens exceeds the limit {self.max_tokens}")
+
+        self._cache = None  # release the old cache before allocating a new one
+        started = time.perf_counter()
+        with torch.inference_mode():
+            out = self.model(
+                input_ids=torch.tensor([ids], dtype=torch.long, device=self._device),
+                attention_mask=torch.ones((1, len(ids)), dtype=torch.long, device=self._device),
+                use_cache=True,
+                return_dict=True,
+            )
+        if self._device.type == "cuda":
+            torch.cuda.synchronize(self._device)
+        self.prefix_seconds = time.perf_counter() - started
+
+        self._cache = out.past_key_values
+        self._prefix_ids = ids
+        self._key = key
+        return len(ids)
+
+    # --------------------------------------------------------------- scoring
+
+    def score(self, decision: Decision) -> Readout:
+        """Score one decision as a suffix off the primed cache.
+
+        Raises:
+            PrefixError: nothing is primed, the decision's evidence is not the
+                primed evidence, or the full prompt does not begin with the
+                cached prefix (a tokenizer-boundary failure).
+        """
+        import torch
+
+        started = time.perf_counter()
+        if self._cache is None:
+            raise PrefixError("no evidence is primed; call prime() first")
+        decision.validate()
+        if evidence_key(decision.evidence) != self._key:
+            raise PrefixError(
+                f"{decision.id}: evidence differs from the primed evidence; "
+                "refusing to score it against another state's cache"
+            )
+
+        prompt = render_prompt(self.tokenizer, decision)
+        ids = self.tokenizer.encode(prompt, add_special_tokens=False)
+        if len(ids) > self.max_tokens:
+            raise ValueError(
+                f"{decision.id}: {len(ids)} input tokens exceed the limit {self.max_tokens}; "
+                "no truncation is performed"
+            )
+        n = len(self._prefix_ids)
+        if ids[:n] != self._prefix_ids:
+            raise PrefixError(
+                f"{decision.id}: full prompt does not begin with the cached prefix; "
+                "the tokenizer re-tokenised the boundary and the cache cannot be reused"
+            )
+        suffix = ids[n:]
+        slots = resolve_slots(self.tokenizer, prompt, ids, len(decision.options))
+
+        forward_started = time.perf_counter()
+        cache = copy.deepcopy(self._cache)
+        positions = torch.arange(n, len(ids), device=self._device)
+        kwargs = dict(
+            input_ids=torch.tensor([suffix], dtype=torch.long, device=self._device),
+            attention_mask=torch.ones((1, len(ids)), dtype=torch.long, device=self._device),
+            past_key_values=cache,
+            use_cache=True,
+            return_dict=True,
+            position_ids=positions.unsqueeze(0),
+        )
+        if self._logits_to_keep:
+            kwargs["logits_to_keep"] = 1
+        if self._cache_position:
+            kwargs["cache_position"] = positions
+        with torch.inference_mode():
+            vocabulary = self.model(**kwargs).logits[:, -1, :][0].float()
+        if self._device.type == "cuda":
+            torch.cuda.synchronize(self._device)
+        forward_seconds = time.perf_counter() - forward_started
+
+        selected = vocabulary[slots].tolist()
+        return Readout(
+            decision_id=decision.id,
+            option_ids=tuple(o.id for o in decision.options),
+            probabilities=tuple(restricted_softmax(selected)),
+            option_logits=tuple(selected),
+            input_tokens=len(ids),
+            forward_seconds=forward_seconds,
+            total_seconds=time.perf_counter() - started,
+            prompt_sha256=prompt_digest(prompt),
+            prompt_version=PROMPT_VERSION,
+            meta={
+                "readout": (
+                    "prefix-cache suffix; full-vocabulary last-position logits "
+                    "restricted to declared answer slots"
+                ),
+                "device": str(self._device),
+                "prefix_tokens": n,
+                "suffix_tokens": len(suffix),
+            },
+        )
+
+    def score_many(self, decisions: list[Decision]) -> list[Readout]:
+        """Score decisions that all share the primed evidence, in order."""
+        return [self.score(d) for d in decisions]
+
+
+def score_with_prefix(model, tokenizer, evidence: object, decisions: list[Decision],
+                      *, max_tokens: int = 4096) -> list[Readout]:
+    """Prime `evidence` once and score every decision against it."""
+    scorer = PrefixScorer(model, tokenizer, max_tokens=max_tokens)
+    scorer.prime(evidence)
+    return scorer.score_many(decisions)
