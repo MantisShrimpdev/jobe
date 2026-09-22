@@ -43,9 +43,11 @@ from .orders import (
 from .prefix import (
     PrefixError,
     PrefixScorer,
+    SuffixLayout,
     evidence_key,
     prefix_ids_for,
     score_with_prefix,
+    suffix_layout,
 )
 from .prompt import (
     PROMPT_VERSION,
@@ -70,6 +72,8 @@ from .slots import (
 __all__ = [
     "PrefixError",
     "PrefixScorer",
+    "SuffixLayout",
+    "suffix_layout",
     "evidence_key",
     "prefix_ids_for",
     "score_with_prefix",

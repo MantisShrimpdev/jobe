@@ -135,9 +135,41 @@ Two guards, both fail-loud rather than degrade:
 - **A decision whose evidence differs from the primed one is refused** with
   `PrefixError`. It is never silently scored against another document's cache.
 
-This is the serial variant — one question at a time, one cache copy each
-(5–10 ms). Batching suffixes in parallel, SemIf's `shared.py`, is the remaining
-optimisation on top.
+### Batched suffixes
+
+`score_batch(decisions, max_batch=2)` runs several suffixes per forward pass off
+a batch-expanded copy of the cache — SemIf's `shared.py` step. Same document,
+eight questions:
+
+| path | ms/question | vs uncached | vs serial | peak GB |
+|---|---:|---:|---:|---:|
+| uncached | 906 | 1.0× | | |
+| serial | 113 | 8.1× | 1.0× | |
+| **batch 2** | **59** | **15.3×** | **1.9×** | 9.12 |
+| batch 4 | 74 | 12.2× | 1.5× | 9.58 |
+| batch 8 | 189 | 4.8× | **0.6×** | 10.06 |
+
+0 argmax flips at every size; logits within two bf16 ulps of the uncached path.
+SemIf reports 1.9× for its own serial→batched step, which is a reassuring
+cross-check.
+
+Three things the measurement decided rather than the design:
+
+- **Right-padding, not left.** Right-padded rows sit within 1–2 ulps of ground
+  truth; left-padded rows drift to 5–7. Pads placed between the prefix and the
+  suffix perturb the hybrid recurrent/conv layers even when masked out.
+- **Expansion via `reorder_cache`** — the beam-search path — because
+  `batch_repeat_interleave` is not implemented for Qwen3.5's linear-attention
+  cache layers.
+- **The default batch is 2, and 8 is slower than serial.** The model takes
+  8.5 GB of a 10.2 GB card; batch 8 peaks at 10.06 GB and the driver spills to
+  host RAM. The ceiling is the hardware, not the code — `bench/prefix_bench.py
+  --batch` finds it on yours.
+
+Each row's readout is gathered at its last real token *before* the LM head, so
+the head runs on one vector per row rather than every padded position. Every
+guard runs for every decision before any forward pass: one foreign decision
+refuses the whole call up front, not after half of it has been paid for.
 
 ## Known limits
 
@@ -172,7 +204,7 @@ src/jobe/
   orders.py    score under several option orders, average, report the flip rate
   calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
-tests/         53 tests; a few need a tokenizer, one is opt-in on a real GPU
+tests/         58 tests; a few need a tokenizer, two are opt-in on a real GPU
 ```
 
 ## Next
@@ -204,8 +236,9 @@ tests/         53 tests; a few need a tokenizer, one is opt-in on a real GPU
    server is needed — Benchmark Heaven runs in-process adapters on their own
    infrastructure, and the spec forbids a home endpoint.
 9. ~~Prefix cache.~~ Done — `jobe.prefix`, **11× per question after the first**
-   on a 2k-token document, logits within two bf16 ulps, 0/8 flips. Serial only;
-   batched suffixes are the remaining SemIf optimisation.
+   on a 2k-token document, logits within two bf16 ulps, 0/8 flips. Batched
+   suffixes too: **1.9× over serial, ~15× over uncached at batch 2**; batch 8
+   is slower than serial on a 10 GB card.
 
 Only after those plateau is training worth considering.
 

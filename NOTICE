@@ -17,7 +17,10 @@ This project contains code adapted from third-party open-source projects.
   rendered prompt after the evidence value, drop the final token as a merge
   guard, keep the KV cache from one pass, and score each question as a suffix
   off a copy of it. Re-authored; the boundary and evidence-identity guards are
-  this project's.
+  this project's. And from src/semif_phase1/shared.py: batched suffix scoring -
+  right-padded suffixes, a batch-expanded cache, each row read at its last real
+  token. Re-authored; expansion via reorder_cache and gathering the row ends
+  before the LM head are this project's.
 
 MIT-licensed portions are used under the terms of the MIT License; the original
 copyright and permission notices are retained via the per-module attribution

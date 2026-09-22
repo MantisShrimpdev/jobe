@@ -133,13 +133,20 @@ class PrefixScorer:
 
         self._cache = None  # release the old cache before allocating a new one
         started = time.perf_counter()
+        kwargs = dict(
+            input_ids=torch.tensor([ids], dtype=torch.long, device=self._device),
+            attention_mask=torch.ones((1, len(ids)), dtype=torch.long, device=self._device),
+            use_cache=True,
+            return_dict=True,
+        )
+        # Only the cache is wanted from this pass. Without this the model also
+        # materialises logits for every prefix position - 1,921 tokens x a 248k
+        # vocabulary in bf16 is ~950 MB of nothing, which on a 10 GB card is the
+        # difference between fitting and not.
+        if self._logits_to_keep:
+            kwargs["logits_to_keep"] = 1
         with torch.inference_mode():
-            out = self.model(
-                input_ids=torch.tensor([ids], dtype=torch.long, device=self._device),
-                attention_mask=torch.ones((1, len(ids)), dtype=torch.long, device=self._device),
-                use_cache=True,
-                return_dict=True,
-            )
+            out = self.model(**kwargs)
         if self._device.type == "cuda":
             torch.cuda.synchronize(self._device)
         self.prefix_seconds = time.perf_counter() - started
@@ -233,6 +240,175 @@ class PrefixScorer:
     def score_many(self, decisions: list[Decision]) -> list[Readout]:
         """Score decisions that all share the primed evidence, in order."""
         return [self.score(d) for d in decisions]
+
+    # --------------------------------------------------------------- batched
+
+    def _prepare(self, decision: Decision) -> tuple[list[int], list[int], list[int], str]:
+        """All the guards, none of the forward pass. Returns (ids, suffix, slots, prompt)."""
+        decision.validate()
+        if evidence_key(decision.evidence) != self._key:
+            raise PrefixError(
+                f"{decision.id}: evidence differs from the primed evidence; "
+                "refusing to score it against another state's cache"
+            )
+        prompt = render_prompt(self.tokenizer, decision)
+        ids = self.tokenizer.encode(prompt, add_special_tokens=False)
+        if len(ids) > self.max_tokens:
+            raise ValueError(
+                f"{decision.id}: {len(ids)} input tokens exceed the limit {self.max_tokens}; "
+                "no truncation is performed"
+            )
+        n = len(self._prefix_ids)
+        if ids[:n] != self._prefix_ids:
+            raise PrefixError(
+                f"{decision.id}: full prompt does not begin with the cached prefix; "
+                "the tokenizer re-tokenised the boundary and the cache cannot be reused"
+            )
+        if len(ids) == n:
+            raise PrefixError(f"{decision.id}: empty suffix")
+        slots = resolve_slots(self.tokenizer, prompt, ids, len(decision.options))
+        return ids, ids[n:], slots, prompt
+
+    def score_batch(self, decisions: list[Decision], *, max_batch: int = 2) -> list[Readout]:
+        """Score decisions sharing the primed evidence, several per forward pass.
+
+        Adapted from SemIf's `shared.py`. Suffixes are RIGHT-padded to a common
+        width, the prefix cache is expanded to the batch with `reorder_cache`
+        (the beam-search path, which every cache layer type implements — the
+        linear-attention layers in a hybrid model lack `batch_repeat_interleave`),
+        and one forward pass scores the whole chunk. Each row's readout is taken
+        at its last REAL token, gathered before the LM head so the head runs on
+        one vector per row rather than every padded position.
+
+        Right-padding is a measured choice, not a habit: on Qwen3.5-4B, right-
+        padded rows matched the uncached forward to within 1–2 bf16 ulps while
+        left-padded rows drifted to 5–7. Pads placed between the prefix and the
+        suffix perturb the recurrent/conv layers even when masked.
+
+        `max_batch` defaults to 2, which measured fastest on a 10 GB card with a
+        ~2k-token prefix: 59 ms/question at batch 2, 74 at batch 4, and batch 8
+        peaked at 10.06 GB, spilled to host memory, and ran SLOWER than serial
+        (189 ms). The ceiling is the hardware, not the code - run
+        bench/prefix_bench.py --batch on yours before raising it. Every guard runs for every decision before any
+        forward pass, so a bad decision refuses the whole call up front rather
+        than after half of it has been paid for.
+        """
+        import torch
+
+        if not decisions:
+            return []
+        if self._cache is None:
+            raise PrefixError("no evidence is primed; call prime() first")
+        if max_batch < 1:
+            raise ValueError("max_batch must be at least 1")
+        pad_id = self.tokenizer.pad_token_id
+        if pad_id is None:
+            pad_id = self.tokenizer.eos_token_id
+        if pad_id is None:
+            raise PrefixError("tokenizer has neither a pad nor an eos token to pad with")
+
+        started = time.perf_counter()
+        prepared = [self._prepare(d) for d in decisions]  # guards first, all of them
+        base = getattr(self.model, "model", None)
+        head = getattr(self.model, "lm_head", None)
+        gather_then_head = base is not None and head is not None
+
+        results: list[Readout] = []
+        n_prefix = len(self._prefix_ids)
+        for start in range(0, len(decisions), max_batch):
+            chunk = list(zip(decisions[start:start + max_batch], prepared[start:start + max_batch]))
+            suffixes = [p[1] for _, p in chunk]
+            layout = suffix_layout(suffixes, n_prefix, pad_id)
+            n = len(chunk)
+
+            forward_started = time.perf_counter()
+            cache = copy.deepcopy(self._cache)
+            cache.reorder_cache(torch.zeros(n, dtype=torch.long, device=self._device))
+            kwargs = dict(
+                input_ids=torch.tensor(layout.input_ids, dtype=torch.long, device=self._device),
+                attention_mask=torch.tensor(layout.attention_mask, dtype=torch.long, device=self._device),
+                position_ids=torch.tensor(layout.position_ids, dtype=torch.long, device=self._device),
+                past_key_values=cache,
+                use_cache=True,
+                return_dict=True,
+            )
+            with torch.inference_mode():
+                if gather_then_head:
+                    hidden = base(**kwargs).last_hidden_state  # (n, width, hidden)
+                    rows = torch.arange(n, device=self._device)
+                    ends = torch.tensor(layout.ends, dtype=torch.long, device=self._device)
+                    vocab = head(hidden[rows, ends]).float()  # (n, vocab)
+                else:
+                    kwargs["logits_to_keep"] = layout.width
+                    logits = self.model(**kwargs).logits.float()
+                    vocab = logits[torch.arange(n), torch.tensor(layout.ends)]
+            if self._device.type == "cuda":
+                torch.cuda.synchronize(self._device)
+            forward_seconds = time.perf_counter() - forward_started
+            del cache
+
+            for row, (decision, (ids, suffix, slots, prompt)) in enumerate(chunk):
+                selected = vocab[row][slots].tolist()
+                results.append(Readout(
+                    decision_id=decision.id,
+                    option_ids=tuple(o.id for o in decision.options),
+                    probabilities=tuple(restricted_softmax(selected)),
+                    option_logits=tuple(selected),
+                    input_tokens=len(ids),
+                    forward_seconds=forward_seconds / n,
+                    total_seconds=0.0,  # filled below once the whole call is timed
+                    prompt_sha256=prompt_digest(prompt),
+                    prompt_version=PROMPT_VERSION,
+                    meta={
+                        "readout": (
+                            "prefix-cache batched suffix; full-vocabulary last-real-token "
+                            "logits restricted to declared answer slots"
+                        ),
+                        "device": str(self._device),
+                        "prefix_tokens": n_prefix,
+                        "suffix_tokens": len(suffix),
+                        "batch": n,
+                        "padding": "right",
+                    },
+                ))
+        total = time.perf_counter() - started
+        return [
+            Readout(**{**r.__dict__, "total_seconds": total / len(results)}) for r in results
+        ]
+
+
+class SuffixLayout:
+    """A right-padded batch of suffixes, ready for one forward pass."""
+
+    __slots__ = ("input_ids", "attention_mask", "position_ids", "ends", "width")
+
+    def __init__(self, input_ids, attention_mask, position_ids, ends, width):
+        self.input_ids = input_ids
+        self.attention_mask = attention_mask
+        self.position_ids = position_ids
+        self.ends = ends
+        self.width = width
+
+
+def suffix_layout(suffixes: list[list[int]], prefix_len: int, pad_id: int) -> SuffixLayout:
+    """Right-pad suffixes to a common width. Pure.
+
+    For each row: ids are the suffix followed by pads; the attention mask covers
+    the cached prefix and the real suffix tokens and is zero over the pads;
+    position ids continue from `prefix_len` over the real tokens; `ends[i]` is
+    the index of the row's last real token, which is where its readout lives.
+    """
+    if not suffixes or any(len(s) == 0 for s in suffixes):
+        raise PrefixError("every decision needs a non-empty suffix")
+    width = max(len(s) for s in suffixes)
+    ids, masks, positions, ends = [], [], [], []
+    for s in suffixes:
+        pad = width - len(s)
+        ids.append(list(s) + [pad_id] * pad)
+        masks.append([1] * (prefix_len + len(s)) + [0] * pad)
+        positions.append(list(range(prefix_len, prefix_len + len(s))) + [0] * pad)
+        ends.append(len(s) - 1)
+    return SuffixLayout(ids, masks, positions, ends, width)
 
 
 def score_with_prefix(model, tokenizer, evidence: object, decisions: list[Decision],
