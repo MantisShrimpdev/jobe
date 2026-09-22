@@ -592,6 +592,56 @@ argued that always placing the previous winner first would make the runoff
 was still necessary; a single-order runoff would have reported −0.077 or
 +0.000 depending purely on which slot the incumbent got.
 
+### Order averaging, finally run as a scoring mode — it does not pay
+
+The 231 public tasks re-run with every option list reversed, base readout, and
+the two distributions averaged per decision:
+
+| scoring mode | correct | accuracy | vs declared |
+|---|---:|---:|---:|
+| declared order | 186 | 0.805 | — |
+| reversed order | 181 | 0.784 | −5 |
+| **averaged** | **185** | **0.801** | **−1** |
+
+Averaging costs one decision and doubles the forward passes. The declared order
+is simply the better one here, and averaging dilutes it. E2's flip rate said
+the readout was unstable; it did not say the instability was symmetric, and it
+is not.
+
+Where the instability lives is the familiar answer:
+
+| baseline confidence | n | answers moved by reversal | averaged vs declared |
+|---|---:|---:|---:|
+| 0.00 – 0.45 | 15 | 8 (53%) | **+1** |
+| 0.45 – 0.85 | 70 | 6 (9%) | −2 |
+| 0.85 – 1.00 | 146 | **0 (0%)** | 0 |
+
+Not one of the 146 confident decisions changed its answer when the options were
+reversed. Order sensitivity is not a property of the readout, it is a property
+of the readout *when it is unsure* — which is the same sentence as everything
+else in this file.
+
+### Four interventions, one law
+
+| intervention | below 0.45 (n=15) | 0.45 – 0.85 (n=70) | above 0.85 (n=146) |
+|---|---|---|---|
+| LoRA on three exact-law families | +6 / −0 | +9 / **−17** | +0 / −2 |
+| 512-token thinking pass | +4 / −0 | +4 / −3 | not routed |
+| top-two runoff | +2 / −0 | +2 / −2 | not asked |
+| order averaging | +1 / −0 | +0 / −2 | +0 / −0 |
+
+A weight update, a long generation, a shorter prompt and a second permutation
+share no mechanism. All four help in the band where the model is at chance and
+none of them break anything there. None help in the contested band and two hurt
+it. Nothing touches the confident 63%.
+
+**So the shape of the remaining headroom is known and it is not encouraging.**
+The bottom band is 15 decisions — 6% of the benchmark, worth at most 6 points
+of hard-tier accuracy, and anything at all recovers part of it. The contested
+band is 70 decisions holding 25 wrong answers, it is where every point of
+plausible gain lives, and four attacks have failed on it. What has not been
+tried there is a *different* model, not a different way of asking this one.
+
 ### The same band re-decides the routed-reasoning result
 
 The routed pass was judged as one rule — think on the bottom 30% of hard tasks
@@ -818,9 +868,9 @@ number in the right direction.
 
 ## What this does not cover
 
-- **Order averaging is still unrun as a scoring mode.** E2 measured the flip
-  rate, but no result above uses an averaged distribution — the accuracy table's
-  `flip` column is 0.0% by construction because that run used a single order.
+- ~~Order averaging is still unrun as a scoring mode.~~ **Run (2026-09-23): it
+  does not pay** — averaged 185/231 against the declared order's 186, for twice
+  the forward passes. See the section above.
 - **The control battery covers Qwen3.5-4B only.** llama-3.2-3b has not been
   gated here; its API-path numbers are from a different run and a quantised
   build, so they are context rather than a like-for-like comparison.
