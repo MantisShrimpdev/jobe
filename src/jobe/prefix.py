@@ -23,9 +23,12 @@ Two guards make this safe, and both fail loudly rather than degrade:
   * a decision whose evidence differs from the primed evidence is refused. It
     is never silently scored against another state's cache.
 
-This is the serial variant: one question at a time, one cache copy each. It is
-the right shape for "many questions about one document". Batching suffixes in
-parallel (SemIf's `shared.py`) is a further optimisation on top of it.
+Two variants live here. `score` is serial: one question at a time, one cache
+copy each. `score_batch` runs several suffixes per forward pass off a batch-
+expanded copy of the cache (SemIf's `shared.py`), right-padded, each row read at
+its last real token; on a 10 GB card it measured fastest at a batch of 2 and
+slower than serial at 8. Both are the right shape for "many questions about one
+document"; neither helps a workload with one question per document.
 """
 
 from __future__ import annotations
