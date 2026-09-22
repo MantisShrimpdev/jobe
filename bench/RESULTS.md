@@ -676,10 +676,26 @@ unsure" did not fail because thinking does not help. It failed because the rule
 was routing twice as many decisions as it should have**, and half of those were
 ones the readout was already getting right.
 
-At a 256-token budget the same arithmetic gives −0.05 headline and +0.53 on the
-accuracy view, which would make it free — but that row assumes the gain
-survives halving the budget, and that is not yet measured. `bench/route_composite.py`
-takes the rule as arguments now, so any threshold can be priced.
+**The 256-token budget is now measured, and the gain does not survive
+halving.** The same 15 decisions, same rule, budget halved:
+
+| budget | fixed | broken | hard Δ | s per routed decision | headline | 60:20:20 |
+|---|---:|---:|---:|---:|---:|---:|
+| 256 | 2 | 0 | +0.018 | 30.4 | 74.64 (**−0.21**) | 78.76 (**+0.10**) |
+| 512 | 4 | 0 | +0.036 | 45.7 | 74.45 (−0.40) | 78.89 (+0.23) |
+
+The arithmetic that assumed the gain would survive gave −0.05 and +0.53; the
+measurement gives −0.21 and +0.10. And the budget buys nothing qualitatively
+new — **the two decisions fixed at 256 tokens are a strict subset of the four
+fixed at 512.** A longer think does not find a different kind of answer, it
+finishes more of the same ones.
+
+So the best *measured* configuration is the 0.45 threshold at 512 tokens:
+−0.40 on the headline composite and **+0.23** on the accuracy-weighted view,
+for 45.7 s on 15 of 231 decisions. Thinking is still not free on the headline.
+It is now merely cheap, instead of the −1.22 it cost under the rule that was
+tested first. `bench/route_composite.py` takes the rule as arguments, so any
+threshold can be priced.
 
 ### A prediction, written before the anchored run was scored
 
@@ -876,9 +892,11 @@ number in the right direction.
   build, so they are context rather than a like-for-like comparison.
 - **Public tasks only** (231 of 534), and the held-out half is where a
   leaderboard result would actually be decided.
-- **The routed pass ran one budget (512) on one cell (30%).** A 256-token
-  budget is the only one the composite could tolerate and it was not run; the
-  table assumes the gain survives halving the budget, which is untested.
+- ~~The routed pass ran one budget (512) on one cell (30%).~~ **Both budgets
+  are now run at the 0.45 threshold (2026-09-23): the gain halves with the
+  budget and the smaller set of fixes is a strict subset of the larger.** What
+  remains untested is a budget *above* 512 and any cell other than the hard
+  tier.
 - **No critique pass.** A LOOP-shaped second pass that attacks the readout's
   answer was not run; with 3 of 7 routed-right answers broken by a single
   think, it would have to be conservative to help.
