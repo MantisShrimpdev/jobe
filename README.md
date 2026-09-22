@@ -6,16 +6,58 @@ next-token distribution in **one forward pass**. Nothing is generated, so there
 is no text to parse, nothing to repair, and no way for the answer to be
 something other than one of the ids you declared.
 
-**Status: conformance-clean through JevBench's own harness, scoring in
-SemIf's band.** 231/231 public tasks driven by their `Runner`, every result
-`strict_valid`, zero failures; 0.805 accuracy, hard tier 0.604. Scored with
-their `composite_v12` under their partial-run rule and their self-hosted
-pricing convention for a 4B: **74.9**, against SemIf's published 74.7 and Jev's
-75.4, with the judge tier unmeasured and held-out unseen (`bench/RESULTS.md`).
-No training has happened — v1 freezes the backbone entirely, which is the
-design, not a shortcut. Three of the top five open systems are frozen
-backbones. Tag **`v0.1.0`** pins this exact state — weights revision, prompt
-version, adapter and run — so every later change is measured against it.
+## Scoreboard
+
+**JevBench v1.2, public set, run through JevBench's own harness** — 231 of 231
+tasks answered, every result `strict_valid`, zero failures. Backbone:
+Qwen3.5-4B, frozen, bf16, one RTX 3080. **No training** — v0.1.0 is the
+readout alone.
+
+| tier | n | accuracy | ECE | p50 latency |
+|---|---:|---:|---:|---:|
+| easy | 48 | **1.000** | 0.016 | 108 ms |
+| standard | 72 | **0.986** | 0.046 | 107 ms |
+| hard | 111 | **0.604** | 0.133 | 224 ms |
+| all | 231 | **0.805** | 0.049 | |
+
+Scored with their `composite_v12`, beside the two systems above it on the
+board (their published axes):
+
+| axis | **Jobe v0.1.0** | SemIf (#2) | Jev 1.13 (#1) |
+|---|---:|---:|---:|
+| Intelligence | 82.9 | 85.9 | 90.4 |
+| Calibration | 71.7 | 72.6 | 82.7 |
+| Speed | **88.4** | 83.7 | 83.3 |
+| Cost | 59.7* | 59.5 | 52.0 |
+| **JevBench Score** | **74.9** | 74.7 | 75.4 |
+| hard-tier accuracy | 0.604 | 0.595 | 0.741 |
+
+\*Cost assumed at SemIf's self-hosted tariff; 72.3–77.9 across a 4× price
+band. This is a public-set run — the judge tier is not public and the
+held-out half is unseen — so it is an estimate of placement, not a placement.
+#10 on the board scores 68.9. Details, corrections and everything that did
+*not* work: `bench/RESULTS.md`.
+
+**Speed, measured:** 36.9 ms per decision end to end (3B backbone, batch 1);
+a 4B answers the standard tier at 107 ms p50. Many questions about one
+document: **11× per question** from the prefix cache, **15×** with batched
+suffixes, 0 argmax flips. 92× over CPU.
+
+**What's ours, beyond the SemIf protocol it adapts:** in-context answer-slot
+resolution, which makes SentencePiece backbones usable instead of rejected;
+the prefix cache and batched suffixes with fail-loud guards; and the
+instrumentation — a control battery passed on every tier, calibration that
+reproduces JevBench's own metrics to 0.0000, and three levers measured and
+rejected with numbers rather than assumed (order averaging, a single global
+temperature, reason-only-when-unsure). The training side lives in
+[TheLab](https://github.com/MantisShrimpdev/TheLab): exact-law world
+generators for the hard-tier families and a LoRA loop graded on the readout,
+whose first run cut held-out NLL from 1.62 to 0.76 in 20 steps.
+
+Three of the top five open systems are frozen backbones; freezing is the
+design, not a shortcut. Tag **`v0.1.0`** pins this exact state — weights
+revision, prompt version, adapter and run — so every later change is measured
+against it.
 
 ```python
 from jobe import Decision, Option, load, score
