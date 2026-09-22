@@ -248,10 +248,16 @@ they exist to close is knowledge, not thinking depth (see `bench/RESULTS.md`).
   rate. Run the control battery before believing any accuracy number.
 - **What `confidence()` *is* good for: handing off.** On good input it does find
   the readout's own wrong answers — hard tier AUROC 0.79, the least-confident
-  quartile 15% accurate against 83% for the most. Use a threshold (≈0.57 on
-  JevBench hard) to route to a person or a larger model. Not to a thinking pass
-  of the same backbone: measured, that fixes 8 and breaks 3 of 33, and 15 of
-  the 21 shared misses are the identical wrong answer (`bench/RESULTS.md`).
+  quartile 15% accurate against 83% for the most. Use a threshold to route to a
+  person or a larger model.
+  **Where the threshold sits decides whether a thinking pass of the same
+  backbone is worth it.** At ≈0.57 it is not — 8 fixed and 3 broken of 33, and
+  15 of the 21 shared misses are the identical wrong answer, a knowledge gap.
+  Below 0.45 it is: 4 fixed, **0 broken** of 15, and that cut routes no standard
+  decision at all, which is what the Speed axis is scored on. Same measurement,
+  same 512-token budget: the composite goes from −1.22 to −0.40, and the
+  accuracy-weighted view from −0.33 to +0.23. Price the rule, not the technique
+  (`bench/RESULTS.md`, `bench/route_composite.py`).
 
 ## Verifying a backbone
 
