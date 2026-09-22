@@ -1,0 +1,54 @@
+{
+ "config": {
+  "epochs": 1,
+  "lr": 0.0002,
+  "weight_decay": 0.0,
+  "batch_size": 1,
+  "grad_accum": 8,
+  "brier_weight": 0.5,
+  "anchor_weight": 1.0,
+  "max_grad_norm": 1.0,
+  "warmup_steps": 20,
+  "eval_every": 100,
+  "seed": 0,
+  "gradient_checkpointing": true,
+  "lora": {
+   "r": 16,
+   "alpha": 32,
+   "dropout": 0.05,
+   "target_modules": [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj"
+   ],
+   "exclude": [
+    "lm_head"
+   ]
+  },
+  "log_every": 10,
+  "gpu_guard_gb": 3.0
+ },
+ "n_train": 3633,
+ "n_heldout": 420,
+ "lora_wrapped": 32,
+ "trainable": 3145728,
+ "total": 4208897024,
+ "trainable_share": 0.0007473996113619339,
+ "total_steps": 455,
+ "device": "cuda:0",
+ "gpu": "NVIDIA GeForce RTX 3080",
+ "torch": "2.11.0+cu128",
+ "python": "3.14.3",
+ "thelab_rev": "f4a5900",
+ "cwd_rev": "725a054",
+ "started": "2026-09-23T03:48:09",
+ "backbone": "D:/Coding/models/qwen35-4b",
+ "records": [
+  "runs/data/worlds-rehearsal.jsonl"
+ ],
+ "dropped": 0,
+ "anchor_families": "nl_rehearsal",
+ "anchor_correct_only": true,
+ "anchored": 787
+}

@@ -1,0 +1,19 @@
+{
+ "model": "D:/Coding/models/qwen35-4b",
+ "tiers": {
+  "all231": {
+   "n": 231,
+   "position_concentration": 0.35064935064935066,
+   "position_expected": 0.27208480565371024,
+   "accuracy": 0.7748917748917749,
+   "chance": 0.31760461760461756,
+   "mean_confidence": 0.8314011248227424,
+   "e1_accuracy": 0.31601731601731603,
+   "e1_drop": 0.4588744588744588,
+   "e1_mean_confidence": 0.6294671866163986,
+   "e2_flip_rate": 0.09523809523809523,
+   "e2_mean_tv": 0.08489304934570424,
+   "e2_accuracy": 0.7532467532467533
+  }
+ }
+}

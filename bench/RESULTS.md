@@ -625,6 +625,119 @@ six options, so the comparison is entirely inside the range where the letter
 readout applies. It says letters are better *where both work*. It says nothing
 about the regime text exists for, which no public JevBench task reaches.
 
+## Training, second full run — every training metric improved and every benchmark metric got worse (2026-09-23)
+
+The first full run's write-up named the fix: "a KL-to-the-frozen-base term on
+decisions it already answers well, so learning the families cannot move the
+rest." This is that run. TheLab's loop gained `--anchor-weight` (forward KL from
+the frozen base over the restricted options, reference precomputed before LoRA
+is applied), `--anchor-families` and `--anchor-correct-only`. The mixture was
+70% worlds and 30% MMLU rehearsal, **no JevBench items** — training on the
+public split is allowed and declared by others, but every number here was
+measured on it — matched to lora-3fam-v1 on *encoded* rows so both runs take the
+same 455 optimiser steps at the same 2,048-token cap. 787 of the 1,105
+rehearsal records carried an anchor, being the ones the base already answered
+correctly. 1 h 53 min, best checkpoint step 400.
+
+**On the training side it beat the first run on every axis:**
+
+| | anchored (step 400) | lora-3fam-v1 (step 300) |
+|---|---:|---:|
+| held-out worlds | **0.650** | 0.619 |
+| gain from its own baseline | **+0.368** | +0.324 |
+| held-out NLL | **0.782** | 0.816 |
+| held-out ECE | **0.022** | 0.056 |
+| MMLU rehearsal | **0.685 → 0.730** | not in the mixture |
+| order flip rate (gate) | **0.095** | 0.113 |
+| position concentration (gate) | **0.351** | 0.368 |
+
+It learned the worlds faster with 30% fewer world records, ended better
+calibrated, raised general ability rather than merely holding it, and became
+more stable under option reversal. The anchor did exactly what it was built to
+do. The gate passed.
+
+**On JevBench every one of those gains reversed:**
+
+| | v0.1.0 | 3fam | anchored |
+|---|---:|---:|---:|
+| easy (48) | 1.000 | 1.000 | 1.000 |
+| standard (72) | 0.986 | 0.958 | 0.958 |
+| hard (111) | 0.604 | 0.586 | **0.550** |
+| all (231) | 0.805 | 0.788 | **0.771** |
+| Brier | 0.254 | 0.282 | **0.297** |
+| ECE | 0.049 | 0.049 | **0.063** |
+
+Scored by JevBench's own `scoring.score_task` and `summarize`, via
+`bench/to_official_records.py`, which reproduces both archived official runs
+exactly (186/231 and 182/231, zero prediction mismatches).
+
+**The single most damaging number is temporal_numeric.** On its own held-out
+worlds that family went 0.243 → 0.615, a 37-point gain over 247 items. On
+JevBench's family of the same name it went **3/15 → 2/15**, where the
+*less*-trained 3fam adapter had gone 3/15 → 5/15. Learning the generator
+harder made the benchmark family worse. long_policy is the same shape: 0.286 →
+0.857 held out, 10/19 → 7/19 on the benchmark against 3fam's 10/19 → 9/19.
+
+Across three runs the relationship is monotone in the wrong direction:
+
+| | held-out worlds | JevBench hard |
+|---|---:|---:|
+| v0.1.0 | 0.282 | **0.604** |
+| 3fam | 0.619 | 0.586 |
+| anchored | 0.650 | **0.550** |
+
+Three points is not a law. It is enough to stop treating held-out world
+accuracy as a proxy for anything.
+
+**By confidence band the shape is the familiar one**, and the anchor did not
+protect the contested middle:
+
+| baseline confidence | n | answer moved | fixed | broken |
+|---|---:|---:|---:|---:|
+| 0.00 – 0.45 | 15 | 11 (73%) | +3 | −1 |
+| 0.45 – 0.85 | 70 | 30 (43%) | +10 | **−17** |
+| 0.85 – 1.00 | 146 | 3 (2%) | +0 | −3 |
+
+The middle band is −7 against 3fam's −8, so the anchor bought essentially
+nothing there — as predicted, for the predicted reason: a KL term costs least
+where the base distribution is flat, and that is exactly where the damage is.
+It also broke one decision in the bottom band, where 3fam broke none.
+
+### Scoring the prediction
+
+The forecast was committed before the run was scored. It was wrong five ways,
+and wrong in *both* directions:
+
+| prediction | outcome |
+|---|---|
+| held-out worlds below 0.619 | 0.650 — too pessimistic |
+| bottom band's +6 mostly survives | +3/−1 — too optimistic |
+| middle band improves to between −5 and 0 | −7 — too optimistic |
+| standard recovers most of its −2 | stayed at −2 |
+| hard lands between −1 and +2 | −6 |
+
+The only part that held was the framing: "the ship rule is more likely to be
+missed than met." It was missed by more than I thought, and the mechanism I
+distrusted (the anchor) worked, while the outcome I expected it to buy did not
+arrive. Registering the forecast is what makes that legible instead of
+retrofittable.
+
+**Decision: `v0.1.0` stays the shipped readout.** Two adapters have now been
+trained and neither ships. The rule was "ship only if hard rises without easy
+or standard falling"; hard fell further than last time.
+
+**What it actually says.** The first run's conclusion was "the worlds teach the
+habits they contain, and the JevBench hard tier is mostly other families." That
+was too kind. This run learned the habits *better* and transferred *worse*, on
+the very families the generators are named after. The exact-law generators are
+not a harder version of JevBench's temporal_numeric and long_policy; they are a
+different distribution wearing the same names, and the gradient that fits one
+moves away from the other. The next change is not another regulariser on the
+same data. It is either training data drawn from the benchmark's own
+distribution, or abandoning the training track for the inference-time
+interventions in this file, which are so far the only things that have moved a
+number in the right direction.
+
 ## What this does not cover
 
 - **Order averaging is still unrun as a scoring mode.** E2 measured the flip

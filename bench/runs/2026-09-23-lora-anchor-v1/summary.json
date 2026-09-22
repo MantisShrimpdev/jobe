@@ -1,0 +1,407 @@
+{
+ "manifest": {
+  "config": {
+   "epochs": 1,
+   "lr": 0.0002,
+   "weight_decay": 0.0,
+   "batch_size": 1,
+   "grad_accum": 8,
+   "brier_weight": 0.5,
+   "anchor_weight": 1.0,
+   "max_grad_norm": 1.0,
+   "warmup_steps": 20,
+   "eval_every": 100,
+   "seed": 0,
+   "gradient_checkpointing": true,
+   "lora": {
+    "r": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "target_modules": [
+     "q_proj",
+     "k_proj",
+     "v_proj",
+     "o_proj"
+    ],
+    "exclude": [
+     "lm_head"
+    ]
+   },
+   "log_every": 10,
+   "gpu_guard_gb": 3.0
+  },
+  "n_train": 3633,
+  "n_heldout": 420,
+  "lora_wrapped": 32,
+  "trainable": 3145728,
+  "total": 4208897024,
+  "trainable_share": 0.0007473996113619339,
+  "total_steps": 455,
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 3080",
+  "torch": "2.11.0+cu128",
+  "python": "3.14.3",
+  "thelab_rev": "f4a5900",
+  "cwd_rev": "725a054",
+  "started": "2026-09-23T03:48:09",
+  "backbone": "D:/Coding/models/qwen35-4b",
+  "records": [
+   "runs/data/worlds-rehearsal.jsonl"
+  ],
+  "dropped": 0,
+  "anchor_families": "nl_rehearsal",
+  "anchor_correct_only": true,
+  "anchored": 787
+ },
+ "history": [
+  {
+   "n": 420,
+   "accuracy": 0.3880952380952381,
+   "nll": 1.3633771130707955,
+   "brier": 0.7193527066640958,
+   "ece": 0.20423471207800512,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.6846846846846847
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.242914979757085
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.4791666666666667
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.2857142857142857
+    }
+   },
+   "mistakes": {
+    "unnamed": 102,
+    "excluded_both_boundary_days": 18,
+    "exactly_11h_counted_as_violation": 12,
+    "followed_unissued_annotation": 10,
+    "calendar_days_counted": 10,
+    "inclusive_end_date": 9,
+    "tib_read_as_decimal_tb": 8,
+    "rounded_each_day": 8,
+    "severity_not_adjusted": 7,
+    "excluded_the_last_day_of_term": 6,
+    "rounded_each_item": 5,
+    "forgot_the_fee": 5,
+    "counted_the_effective_date_as_unused": 5,
+    "included_breakfast": 5,
+    "ignored_credits": 5,
+    "weekend_paused_the_window": 4,
+    "compared_wall_clocks_without_converting": 4,
+    "list_price_instead_of_paid": 4,
+    "wrong_basis_365_vs_360": 4,
+    "act_vs_30_360": 3,
+    "ignored_nightly_cap": 3,
+    "counted_tax_and_ignored_credits": 3,
+    "excluded_the_cancellation_date": 2,
+    "used_next_business_day_rate": 2,
+    "counted_tax_in_net": 2,
+    "followed_near_miss_identifier": 2,
+    "utc_not_converted": 2,
+    "used_superseded_revision": 2,
+    "no_month_end_rule": 1,
+    "wall_clock_across_change": 1,
+    "rounded_each_night": 1,
+    "counted_out_of_cycle_purchase": 1,
+    "retired_rota_sheet_used": 1
+   },
+   "step": 0,
+   "epoch": 0.0,
+   "elapsed_s": 168.6
+  },
+  {
+   "n": 420,
+   "accuracy": 0.6023809523809524,
+   "nll": 0.9891452267508207,
+   "brier": 0.5270119795716259,
+   "ece": 0.04960284072509294,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.6846846846846847
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.5506072874493927
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.6041666666666666
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.8571428571428571
+    }
+   },
+   "mistakes": {
+    "unnamed": 85,
+    "wall_clock_across_change": 9,
+    "tib_read_as_decimal_tb": 8,
+    "rounded_each_day": 6,
+    "counted_out_of_cycle_purchase": 6,
+    "followed_unissued_annotation": 6,
+    "rounded_each_item": 5,
+    "rounded_each_night": 5,
+    "weekend_paused_the_window": 4,
+    "365_day_term": 4,
+    "ignored_credits": 4,
+    "used_superseded_revision": 4,
+    "followed_near_miss_identifier": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "counted_the_effective_date_as_unused": 2,
+    "exactly_11h_counted_as_violation": 2,
+    "utc_not_converted": 2,
+    "retired_rota_sheet_used": 2,
+    "counted_from_the_letter": 2,
+    "opened_on_the_notice_day": 1,
+    "wrong_basis_365_vs_360": 1,
+    "used_checkin_date_rate": 1,
+    "used_next_business_day_rate": 1,
+    "included_breakfast": 1,
+    "override_window_ignored": 1
+   },
+   "step": 100,
+   "epoch": 0.22,
+   "elapsed_s": 1436.2
+  },
+  {
+   "n": 420,
+   "accuracy": 0.6404761904761904,
+   "nll": 0.8325988177312862,
+   "brier": 0.4474417037596429,
+   "ece": 0.03206016682580949,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.7117117117117117
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.5789473684210527
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.7291666666666666
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.8571428571428571
+    }
+   },
+   "mistakes": {
+    "unnamed": 76,
+    "wall_clock_across_change": 9,
+    "tib_read_as_decimal_tb": 8,
+    "rounded_each_day": 8,
+    "rounded_each_item": 5,
+    "ignored_credits": 5,
+    "followed_unissued_annotation": 5,
+    "weekend_paused_the_window": 4,
+    "rounded_each_night": 4,
+    "counted_the_effective_date_as_unused": 3,
+    "followed_near_miss_identifier": 3,
+    "used_superseded_revision": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "exactly_11h_counted_as_violation": 2,
+    "used_next_business_day_rate": 2,
+    "counted_out_of_cycle_purchase": 2,
+    "utc_not_converted": 2,
+    "counted_from_the_letter": 2,
+    "opened_on_the_notice_day": 1,
+    "365_day_term": 1,
+    "wrong_basis_365_vs_360": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "counted_tax_in_net": 1
+   },
+   "step": 200,
+   "epoch": 0.44,
+   "elapsed_s": 2985.8
+  },
+  {
+   "n": 420,
+   "accuracy": 0.6523809523809524,
+   "nll": 0.7879122617286245,
+   "brier": 0.4247537293904068,
+   "ece": 0.022124072970999904,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.7207207207207207
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.5910931174089069
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.75
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.8571428571428571
+    }
+   },
+   "mistakes": {
+    "unnamed": 70,
+    "rounded_each_day": 14,
+    "tib_read_as_decimal_tb": 8,
+    "exactly_11h_counted_as_violation": 6,
+    "rounded_each_item": 5,
+    "wall_clock_across_change": 5,
+    "weekend_paused_the_window": 4,
+    "compared_wall_clocks_without_converting": 4,
+    "ignored_credits": 4,
+    "followed_near_miss_identifier": 4,
+    "followed_unissued_annotation": 3,
+    "365_day_term": 2,
+    "used_next_business_day_rate": 2,
+    "used_superseded_revision": 2,
+    "utc_not_converted": 2,
+    "counted_from_the_letter": 2,
+    "opened_on_the_notice_day": 1,
+    "no_month_end_rule": 1,
+    "excluded_the_last_day_of_term": 1,
+    "counted_the_effective_date_as_unused": 1,
+    "forgot_the_fee": 1,
+    "wrong_basis_365_vs_360": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "counted_out_of_cycle_purchase": 1
+   },
+   "step": 300,
+   "epoch": 0.661,
+   "elapsed_s": 4497.0
+  },
+  {
+   "n": 420,
+   "accuracy": 0.6666666666666666,
+   "nll": 0.782085548622007,
+   "brier": 0.42868973224910933,
+   "ece": 0.021782537102424674,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.7117117117117117
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.6153846153846154
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.7708333333333334
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.8571428571428571
+    }
+   },
+   "mistakes": {
+    "unnamed": 74,
+    "tib_read_as_decimal_tb": 8,
+    "rounded_each_day": 7,
+    "rounded_each_item": 5,
+    "weekend_paused_the_window": 4,
+    "wall_clock_across_change": 4,
+    "rounded_each_night": 4,
+    "followed_near_miss_identifier": 4,
+    "used_next_business_day_rate": 3,
+    "followed_unissued_annotation": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "wrong_basis_365_vs_360": 2,
+    "inclusive_end_date": 2,
+    "ignored_credits": 2,
+    "used_superseded_revision": 2,
+    "utc_not_converted": 2,
+    "counted_from_the_letter": 2,
+    "opened_on_the_notice_day": 1,
+    "counted_the_effective_date_as_unused": 1,
+    "excluded_the_last_day_of_term": 1,
+    "forgot_the_fee": 1,
+    "365_day_term": 1,
+    "act_vs_30_360": 1,
+    "exactly_11h_counted_as_violation": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1,
+    "counted_out_of_cycle_purchase": 1
+   },
+   "step": 400,
+   "epoch": 0.881,
+   "elapsed_s": 5951.7
+  },
+  {
+   "n": 420,
+   "accuracy": 0.6571428571428571,
+   "nll": 0.7862035832767615,
+   "brier": 0.435075021306469,
+   "ece": 0.02446628118674553,
+   "by_family": {
+    "nl_rehearsal": {
+     "n": 111,
+     "accuracy": 0.7297297297297297
+    },
+    "temporal_numeric": {
+     "n": 247,
+     "accuracy": 0.5991902834008097
+    },
+    "multi_hop": {
+     "n": 48,
+     "accuracy": 0.7291666666666666
+    },
+    "long_policy": {
+     "n": 14,
+     "accuracy": 0.8571428571428571
+    }
+   },
+   "mistakes": {
+    "unnamed": 68,
+    "wall_clock_across_change": 9,
+    "tib_read_as_decimal_tb": 8,
+    "rounded_each_day": 6,
+    "rounded_each_item": 5,
+    "rounded_each_night": 5,
+    "weekend_paused_the_window": 4,
+    "ignored_credits": 4,
+    "followed_near_miss_identifier": 4,
+    "followed_unissued_annotation": 4,
+    "used_next_business_day_rate": 3,
+    "compared_wall_clocks_without_converting": 2,
+    "counted_the_effective_date_as_unused": 2,
+    "wrong_basis_365_vs_360": 2,
+    "exactly_11h_counted_as_violation": 2,
+    "inclusive_end_date": 2,
+    "counted_out_of_cycle_purchase": 2,
+    "used_superseded_revision": 2,
+    "utc_not_converted": 2,
+    "counted_from_the_letter": 2,
+    "opened_on_the_notice_day": 1,
+    "excluded_the_last_day_of_term": 1,
+    "forgot_the_fee": 1,
+    "365_day_term": 1,
+    "used_checkin_date_rate": 1,
+    "included_breakfast": 1
+   },
+   "step": 455,
+   "epoch": 1.0,
+   "elapsed_s": 6786.6
+  }
+ ],
+ "best": {
+  "nll": 0.782085548622007,
+  "step": 400,
+  "accuracy": 0.6666666666666666,
+  "ece": 0.021782537102424674
+ },
+ "stopped": null,
+ "finished": "2026-09-23T05:41:15",
+ "elapsed_s": 6786.6
+}
