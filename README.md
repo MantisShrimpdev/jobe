@@ -172,6 +172,37 @@ the head runs on one vector per row rather than every padded position. Every
 guard runs for every decision before any forward pass: one foreign decision
 refuses the whole call up front, not after half of it has been paid for.
 
+## Worlds — training data from exact laws
+
+The hard-tier gap is knowledge, not thinking depth (see `bench/RESULTS.md`), so
+the next lever is training — and training data for exact-law families cannot
+be labelled by a model that gets them wrong. `jobe.worlds` generates decisions
+whose answers are **computed by code** from rules stated in full in the
+evidence. `worlds/temporal_numeric.py` covers the family where the readout most
+often reproduces the same wrong number: day-count interest, month-end roll with
+leap years and time zones, threshold-crossing days on net cost, cumulative card
+limits, rest periods across a clock change, business-day windows, unit
+conversion with one rounding, binary-vs-decimal allowances, FX reimbursement,
+refund and credit proration — eleven laws.
+
+The wrong options are not random. Each is the answer a **named mistake**
+produces — wall-clock time across a clock change, an inclusive end date, a
+365-day basis, tax counted in net cost — and the record says which
+(`mistakes: {option_id: mistake}`), so a trained readout is graded on the law
+and not the surface. Clock changes follow the US and EU rules from first
+principles in stdlib, and every evidence text states the change it relies on.
+
+```bash
+PYTHONPATH=src python -m jobe.worlds.temporal_numeric --n 2000 --seed 0 --out temporal_numeric.jsonl
+PYTHONPATH=src python -m jobe.worlds.temporal_numeric --n 500 --check-contamination <jevbench clone>
+```
+
+Records are reproducible from the seed, carry a stable `train`/`heldout` split
+(≈10 % held out by id hash) and the rationale, and convert to a `Decision` with
+`to_decision`. Nothing in them is JevBench text: the contamination check fails
+on any 10-word run shared with the public task files, and it caught my own
+first draft, which had paraphrased two of their rule sentences too closely.
+
 ## Known limits
 
 - **16 options maximum** — one single-token letter each. Above roughly that,
@@ -211,7 +242,8 @@ src/jobe/
   orders.py    score under several option orders, average, report the flip rate
   calibrate.py temperature fitting + ECE/MCE/Brier/NLL over stored logits
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
-tests/         58 tests; a few need a tokenizer, two are opt-in on a real GPU
+  worlds/      exact-law generators: synthetic decisions whose answers are computed by code
+tests/         72 tests; a few need a tokenizer, two are opt-in on a real GPU, one needs a JevBench clone
 ```
 
 ## Next
@@ -258,9 +290,10 @@ The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
 baseline. What follows it, in order: **submit** (item 8 — the held-out number
 is the one that counts), then **training** on the families where the model
 reproduces the same wrong answer — temporal_numeric, long_policy, multi_hop —
-from exact-law generators, LoRA on the frozen backbone, CE on the option slots
-plus a Brier term, gated by E1 and `bench/gate.py` and compared to `v0.1.0`
-through the same harness.
+from exact-law generators (`jobe.worlds`; temporal_numeric is built, the other
+two are not), LoRA on the frozen backbone, CE on the option slots plus a Brier
+term, gated by E1 and `bench/gate.py` and compared to `v0.1.0` through the same
+harness.
 
 ## License and attribution
 
