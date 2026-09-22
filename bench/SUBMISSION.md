@@ -98,38 +98,47 @@ in README-submission.md).
 - [x] Repo made public — 2026-09-22.
 - [x] Issue opened — https://github.com/fstandhartinger/jevbench/issues/28 (2026-09-22).
 
-## Issue text (paste into a new issue on fstandhartinger/jevbench)
+## Issue text (as posted — fstandhartinger/jevbench#28)
 
-**Title:** Submission: Jobe — frozen Qwen3.5-4B decision readout, in-process adapter
+**Title:** [bench request]: Add Jobe (Qwen3.5-4B frozen readout, native option-slot probabilities, in-process adapter)
 
-Repo: https://github.com/MantisShrimpdev/jobe, tag `v0.1.0` (commit `732f01e`). MIT.
+Hi Florian — I would like to submit **Jobe** to JevBench.
 
-What it is: a local, frozen-backbone decision readout over `Qwen/Qwen3.5-4B`
-(bf16, hub revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a`). One forward
-pass per decision; the distribution is the restricted softmax over the
-declared options' answer-letter logits at the last position — `native`
-probabilities, zero generated tokens. No temperature, no order averaging
-(both measured and rejected; see `bench/README-submission.md`). The
-protocol is adapted from SemIf (MIT, attributed in `NOTICE`); the answer
-slots are resolved in context rather than standalone, which is the one
-divergence.
+Jobe is an open-source, local, frozen-backbone decision readout: one forward pass per decision, the distribution read as the restricted softmax over the declared options' answer-letter logits at the last position — `native` probabilities, zero generated tokens. It runs as an in-process adapter for your harness, so there is no endpoint to keep online and the held-out items can be sent on your machine.
 
-How to run: in-process adapter, no endpoint — `bench/jobe_direct.py` drops
-into `jevbench/adapters/`, and `bench/jevbench-registration.patch` applies
-the `cli.py` registration against v1.2.11. Full steps in `bench/SUBMISSION.md`.
-Needs one 10 GB GPU. On Linux nothing else; on Windows `bench/winshim` on the path.
+## System Details
+- **Name:** Jobe (Qwen3.5-4B, frozen)
+- **Repo:** https://github.com/MantisShrimpdev/jobe — tag `v0.1.0` (commit `732f01e`)
+- **Weights:** `Qwen/Qwen3.5-4B`, bf16, hub revision `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` — unmodified; no LoRA, no training
+- **License:** MIT (code); Qwen3.5 weights Apache-2.0
+- **Architecture:** decoder-only causal LM read at the answer position; answer slots resolved in context (`encode(prompt + letter)[-1]`), which is the one divergence from the SemIf protocol it adapts (MIT, attributed in `NOTICE`)
+- **Temperature / order averaging:** none / none — both measured and rejected (`bench/README-submission.md`)
+- **Output tokens:** 0 per decision
 
-Public-set run through your harness (`bench/runs/2026-09-22-public231/`):
-231/231 strict-valid, 0 failures; easy 1.000, standard 0.986, hard 0.604
-(ECE 0.016 / 0.046 / 0.133); standard-tier p50 0.107 s, p95 0.125 s raw on
-an RTX 3080.
+## How to Reproduce / Run
+In-process adapter, no server. `bench/jobe_direct.py` drops into `jevbench/adapters/`; `bench/jevbench-registration.patch` applies the `cli.py` registration against v1.2.11. Needs one 10 GB GPU (≈ 8.6 GB at bf16). Linux needs nothing else; Windows needs `bench/winshim` on `PYTHONPATH`.
 
-Pricing: same weights as SemIf — deepinfra Qwen3.5-4B $0.03/M in, $0.15/M
-out — with measured input tokens (164 easy / 168 standard / 1,274 hard per
-decision) and 0 output tokens; ≈ $0.019 per 1,000 decisions under your v1.2.3 rule.
+```bash
+git clone https://github.com/MantisShrimpdev/jobe && cd jobe && git checkout v0.1.0
+pip install -e .
+cp bench/jobe_direct.py <jevbench>/jevbench/adapters/
+( cd <jevbench> && git apply <jobe>/bench/jevbench-registration.patch )
+cd <jevbench> && JEVBENCH_WARM_LOAD=1 python -m jevbench.cli run --adapter jobe_direct \
+    --model Qwen/Qwen3.5-4B --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a ...
+```
+Full steps and the system-card fields in `bench/SUBMISSION.md`. The adapter returns 422 for anything outside the protocol (more than 16 options; a prompt over `max_tokens`, which is never truncated) so the runner records it and continues.
 
-Known limits: 16 options maximum (returns 422 beyond it); prompts are never
-truncated (422 over `max_tokens`); probability fidelity on exact-distribution
-items is the weak spot (mean TV 0.299 on the 10 public ones).
+## Reference Local Run (Public Items)
+231 public items through the official runner (`bench/runs/2026-09-22-public231/`): 231/231 strict-valid, 0 failures.
 
-Happy to adjust anything about the adapter to fit your run.
+| Split | n | Accuracy | ECE | p50 raw | p95 raw |
+|---|---:|---:|---:|---:|---:|
+| easy | 48 | **1.000** | 0.016 | 0.108 s | 0.144 s |
+| original (standard) | 72 | **0.986** | 0.046 | 0.107 s | 0.125 s |
+| hard (public half) | 111 | **0.604** | 0.133 | 0.224 s | 3.253 s |
+
+- **Latency:** RTX 3080, in-process, batch 1, `eager` attention — your ×2 + 0.15 s self-hosted adjustment applies
+- **Cost basis:** same weights as SemIf — deepinfra Qwen3.5-4B $0.03/M in, $0.15/M out — with measured input tokens (164 easy / 168 standard / 1,274 hard per decision) and 0 output tokens; ≈ $0.019 per 1,000 decisions under your v1.2.3 rule
+- **Known weak spot:** probability fidelity on exact-distribution items — mean total variation 0.299 on the 10 public ones
+
+Please let me know if you need any additional files or clarifications. Thanks!

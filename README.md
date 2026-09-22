@@ -59,10 +59,16 @@ design, not a shortcut. Tag **`v0.1.0`** pins this exact state — weights
 revision, prompt version, adapter and run — so every later change is measured
 against it.
 
+**Submitted to JevBench** —
+[fstandhartinger/jevbench#28](https://github.com/fstandhartinger/jevbench/issues/28),
+awaiting their run on the full 534 decisions, which is the first number that
+counts as a placement.
+
 ```python
 from jobe import Decision, Option, load, score
 
-backbone = load("unsloth/llama-3.2-3b-instruct")
+# the scored backbone, pinned; any HuggingFace causal LM works the same way
+backbone = load("Qwen/Qwen3.5-4B", revision="851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a")
 r = score(backbone.model, backbone.tokenizer, Decision(
     id="ticket-1",
     evidence="The API has returned 503 for every request since the deploy.",
