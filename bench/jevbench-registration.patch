@@ -1,0 +1,59 @@
+diff --git a/jevbench/adapters/__init__.py b/jevbench/adapters/__init__.py
+index 0474e82..7aa4f64 100644
+--- a/jevbench/adapters/__init__.py
++++ b/jevbench/adapters/__init__.py
+@@ -22,6 +22,7 @@ from .systemone_list import SystemOneListAdapter  # noqa: F401
+ from .gradio_space import GradioSpaceAdapter  # noqa: F401
+ from .local_openjev import LocalOpenJevAdapter  # noqa: F401
+ from .semif_direct import SemIfDirectAdapter  # noqa: F401
++from .jobe_direct import JobeDirectAdapter  # noqa: F401
+ from .so1_decider import So1DeciderAdapter  # noqa: F401
+ from .remote_inproc import RemoteInprocAdapter  # noqa: F401
+ from .sg_system_one import SgSystemOneAdapter  # noqa: F401
+diff --git a/jevbench/cli.py b/jevbench/cli.py
+index 3d5504d..c041cf7 100644
+--- a/jevbench/cli.py
++++ b/jevbench/cli.py
+@@ -22,7 +22,7 @@ import time
+ 
+ from .adapters import (GradioSpaceAdapter, LocalOpenJevAdapter, NeedleLocalAdapter,
+                        OpenAICompatAdapter, SystemOneListAdapter,
+-                       RemoteInprocAdapter, SemIfDirectAdapter, SgSystemOneAdapter, So1DeciderAdapter,
++                       RemoteInprocAdapter, SemIfDirectAdapter, JobeDirectAdapter, SgSystemOneAdapter, So1DeciderAdapter,
+                        TypeSafeAdapter, DjevAdapter,
+                        LayaLocalAdapter, Gliner2LocalAdapter, VerdictLocalAdapter, PawLocalAdapter,
+                        ClassifierDevAdapter, CertoLocalAdapter)
+@@ -59,13 +59,13 @@ def cmd_run(args) -> int:
+              "gradio_space": GradioSpaceAdapter, "local_openjev": LocalOpenJevAdapter,
+              "openai_compat": OpenAICompatAdapter,
+              "needle_local": NeedleLocalAdapter,
+-             "semif_direct": SemIfDirectAdapter, "so1_decider": So1DeciderAdapter,
++             "semif_direct": SemIfDirectAdapter, "jobe_direct": JobeDirectAdapter, "so1_decider": So1DeciderAdapter,
+              "remote_inproc": RemoteInprocAdapter, "sg_system_one": SgSystemOneAdapter,
+              "djev": DjevAdapter,
+              "laya_local": LayaLocalAdapter, "gliner2_local": Gliner2LocalAdapter,
+              "verdict_local": VerdictLocalAdapter, "paw_local": PawLocalAdapter,
+              "classifier_dev": ClassifierDevAdapter, "certo_local": CertoLocalAdapter}
+-    if args.adapter not in ("typesafe", "djev", "needle_local", "semif_direct", "so1_decider", "sg_system_one", "classifier_dev") and not args.endpoint:
++    if args.adapter not in ("typesafe", "djev", "needle_local", "semif_direct", "jobe_direct", "so1_decider", "sg_system_one", "classifier_dev") and not args.endpoint:
+         print(f"--endpoint required for {args.adapter}", file=sys.stderr)
+         return 2
+     kwargs = dict(endpoint=args.endpoint, model=args.model,
+@@ -74,7 +74,7 @@ def cmd_run(args) -> int:
+                   price_output_per_m=args.price_out_per_m)
+     if args.adapter == "openai_compat":
+         kwargs["model"] = args.model or ""
+-    if args.adapter in ("local_openjev", "semif_direct", "so1_decider", "sg_system_one",
++    if args.adapter in ("local_openjev", "semif_direct", "jobe_direct", "so1_decider", "sg_system_one",
+                         "laya_local", "gliner2_local", "verdict_local", "paw_local", "certo_local"):
+         kwargs["revision"] = args.revision
+     adapter = kinds[args.adapter](**kwargs)
+@@ -162,7 +162,7 @@ def main(argv=None) -> int:
+     p_run.add_argument("--adapter", required=True,
+                        choices=["typesafe", "systemone_list", "gradio_space",
+                                 "local_openjev", "openai_compat", "needle_local",
+-                                "semif_direct", "so1_decider", "remote_inproc",
++                                "semif_direct", "jobe_direct", "so1_decider", "remote_inproc",
+                                 "sg_system_one", "djev", "laya_local", "gliner2_local",
+                                 "verdict_local", "paw_local", "classifier_dev", "certo_local"])
+     p_run.add_argument("--endpoint", default=None)
