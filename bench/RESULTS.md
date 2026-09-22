@@ -299,6 +299,96 @@ would be most useful**: −0.217 on easy, −0.093 on original, **−0.020 on ha
 On the hard tier confidence is essentially flat between real and nonsense
 evidence. The structural caveat stands — validate evidence before the call.
 
+## Reason only when unsure — measured, and it does not pay
+
+The OODA-shaped idea: readout first, and route only the decisions the readout
+is unsure about to a thinking pass. Three questions in order, each able to end
+the experiment early. Scripts: `bench/uncertainty_analysis.py`,
+`bench/reason_route.py`, `bench/route_composite.py`; artifacts in
+`bench/runs/2026-09-22-reason-route/`.
+
+### Q1 — can the readout's uncertainty find its own wrong answers? Yes.
+
+Pure analysis over the official-harness results. On the hard tier, 1 − top
+probability detects a wrong answer with **AUROC 0.787** (margin 0.750, entropy
+0.779); accuracy by confidence quartile, low to high, is **0.148 / 0.667 /
+0.741 / 0.833**. Routing the least-confident 30% (confidence ≤ 0.573) would
+catch 26 of the 44 hard-tier misses; on the standard tier the AUROC is 0.972.
+The caveat above — confidence barely moves under nonsense evidence on hard —
+does not bite here: that is about *bad input*, this is about *wrong answers on
+good input*, and the two are different questions.
+
+### Q2 — does a thinking pass beat the readout on those decisions? Barely, and not significantly.
+
+Same backbone, same system prompt and options, `enable_thinking=True`, the
+model card's thinking recipe (temperature 1.0, top-p 0.95, top-k 20, presence
+penalty 1.5 as a logits processor). **Free thinking never terminates:** greedy
+and the recipe both ran to a 2,048-token cap without emitting `</think>`,
+looping, on both diagnostic tasks — one greedy trace had already reached the
+right conclusion ("Therefore, the $15,000 sublimit applies") and could not
+stop. So the pass is **budget-forced**: 512 thinking tokens, then `</think>` is
+injected and the answer letter is read greedily (`reason_diag.out`).
+
+On the 33 least-confident hard tasks (the 30% cell): readout **7/33 = 0.212**,
+thinking **12/33 = 0.364**. **8 fixed, 3 broken, 4 kept — and 15 of the 21
+shared misses are the identical wrong answer.** Sign test on the 11 discordant
+pairs: two-sided p = 0.23. Mean 45.3 s per routed task (36–77 s) for 512
+tokens — 3.9–14 tok/s on this card, prompt-length dependent; 0/33 closed the
+think on its own.
+
+| family | n | readout right | routed right |
+|---|---:|---:|---:|
+| temporal_numeric | 10 | 1 | 3 |
+| long_policy | 8 | 2 | 4 |
+| multi_hop | 6 | 0 | 1 |
+| probability | 3 | 2 | 2 |
+| tradeoff | 3 | 1 | 0 |
+| adversarial | 1 | 0 | 1 |
+| ambiguous | 1 | 0 | 1 |
+| judge_hard | 1 | 1 | 0 |
+
+### Q3 — the routing curve
+
+Hard tier (n = 111), readout for the confident rest:
+
+| routed | tasks | hard acc | Δ | mean s per hard decision |
+|---:|---:|---:|---:|---:|
+| 0% | 0 | 0.604 | | 0.9 |
+| 10% | 11 | 0.631 | +0.027 | 5.5 |
+| 20% | 22 | 0.640 | +0.036 | 9.9 |
+| 30% | 33 | 0.649 | +0.045 | 14.4 |
+
+### What the composite does with it
+
+Two facts from the harness (`composite_v12.py`, `results/v1.2`). **Speed is
+the standard+judge run only** — hard-tier latency never enters it, and at this
+cutoff the router touches 2 of 72 standard tasks, both already right, so p95
+is untouched: the latency above is free in the score. **Cost is token-priced**
+at the 4B reference tariff, $0.03/M in and **$0.15/M out**, with hard 220/534
+of the average — thinking tokens land on the axis the geometric mean punishes
+hardest. With the measured +0.045 (`route_composite.py`, harness functions):
+
+| think tokens | usd / 1,000 | K | JevBench Score | 60:20:20 accuracy view |
+|---:|---:|---:|---:|---:|
+| 0 (readout) | 0.0220 | 59.7 | 74.85 | 78.66 |
+| 256 (not run; assumes the gain survives) | 0.0272 | 56.9 | 74.38 (−0.47) | 78.97 (+0.31) |
+| 512 (measured) | 0.0325 | 54.7 | 73.62 (−1.23) | 78.32 (−0.34) |
+
+Break-even on the headline score needed hard +0.185 at 512 tokens or +0.097 at
+256; measured +0.045. This is GPT-5.6 Luna's placement in miniature — I 96.8,
+K 28.5, #20 — the score is built so accuracy cannot buy back cost.
+
+### Reading
+
+The identical-miss rate is the finding. When both modes are wrong, **71% of
+the time it is the same wrong answer**, and every temporal_numeric miss
+reproduced the readout's exact number. For this backbone the hard-tier gap is
+mostly not a reasoning-depth problem; it is what the model knows or can
+compute at all — the case for training, not for a longer think. Routing stays
+a product option (+4.5 points on hard for ~14 s per hard decision, when
+accuracy matters more than the bill), not a leaderboard move, and it is not
+wired into `jobe_direct.py`.
+
 ## What this does not cover
 
 - **Order averaging is still unrun as a scoring mode.** E2 measured the flip
@@ -309,6 +399,12 @@ evidence. The structural caveat stands — validate evidence before the call.
   build, so they are context rather than a like-for-like comparison.
 - **Public tasks only** (231 of 534), and the held-out half is where a
   leaderboard result would actually be decided.
+- **The routed pass ran one budget (512) on one cell (30%).** A 256-token
+  budget is the only one the composite could tolerate and it was not run; the
+  table assumes the gain survives halving the budget, which is untested.
+- **No critique pass.** A LOOP-shaped second pass that attacks the readout's
+  answer was not run; with 3 of 7 routed-right answers broken by a single
+  think, it would have to be conservative to help.
 
 ## Methodology, and its limits
 
