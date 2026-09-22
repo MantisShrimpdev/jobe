@@ -50,7 +50,7 @@ instrumentation — a control battery passed on every tier, calibration that
 reproduces JevBench's own metrics to 0.0000, and three levers measured and
 rejected with numbers rather than assumed (order averaging, a single global
 temperature, reason-only-when-unsure). The training side lives in
-[TheLab](https://github.com/MantisShrimpdev/TheLab): exact-law world
+TheLab (a separate repo, private for now): exact-law world
 generators for the hard-tier families and a LoRA loop graded on the readout,
 whose first run cut held-out NLL from 1.62 to 0.76 in 20 steps.
 
@@ -218,7 +218,7 @@ refuses the whole call up front, not after half of it has been paid for.
 
 The exact-law generators — temporal_numeric (eleven laws), long_policy (six),
 multi_hop (three, one in five domain skins) — were built here and moved to
-[TheLab](https://github.com/MantisShrimpdev/TheLab) (`thelab.decisions.worlds`)
+TheLab (`thelab.decisions.worlds`, private for now)
 together with the control-battery verdicts and the calibration code, because
 they take a records file and never touch a model. `jobe.records.to_decision`
 turns a generated record into a `Decision` for this readout. The hard-tier gap

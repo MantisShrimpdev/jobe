@@ -95,8 +95,8 @@ in README-submission.md).
 - [x] History scanned for secrets and private addresses across all 22 commits: none.
 - [x] `v0.1.0` tag pushed; weights revision pinned and shard hashes verified against the hub.
 - [x] Adapter conformance-clean through their `Runner` (231/231 strict-valid).
-- [ ] Repo made public (`gh repo edit MantisShrimpdev/jobe --visibility public --accept-visibility-change-consequences`).
-- [ ] Issue opened with the text below.
+- [x] Repo made public — 2026-09-22.
+- [x] Issue opened — https://github.com/fstandhartinger/jevbench/issues/28 (2026-09-22).
 
 ## Issue text (paste into a new issue on fstandhartinger/jevbench)
 
