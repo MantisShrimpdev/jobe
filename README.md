@@ -1,71 +1,14 @@
 # Jobe
 
-A local, frozen-backbone decision readout. Give it evidence, a criterion and a
-set of options; it returns a probability for each option, read from the model's
-next-token distribution in **one forward pass**. Nothing is generated, so there
-is no text to parse, nothing to repair, and no way for the answer to be
-something other than one of the ids you declared.
+**Typed decisions from a frozen model, in your own process.** Give it evidence,
+a criterion and a set of options; it returns a probability for each option, read
+straight from the model's next-token distribution in **one forward pass**.
+Nothing is generated, so there is no text to parse, nothing to repair, and no
+way for the answer to be something other than an id you declared.
 
-## Scoreboard
-
-**JevBench v1.2, public set, run through JevBench's own harness** — 231 of 231
-tasks answered, every result `strict_valid`, zero failures. Backbone:
-Qwen3.5-4B, frozen, bf16, one RTX 3080. **No training** — v0.1.0 is the
-readout alone.
-
-| tier | n | accuracy | ECE | p50 latency |
-|---|---:|---:|---:|---:|
-| easy | 48 | **1.000** | 0.016 | 108 ms |
-| standard | 72 | **0.986** | 0.046 | 107 ms |
-| hard | 111 | **0.604** | 0.133 | 224 ms |
-| all | 231 | **0.805** | 0.049 | |
-
-Scored with their **v1.3.0** rule (Intelligence chance-corrected per tier —
-the live board since 22 Sep 2026), beside the two systems above it (their
-published axes):
-
-| axis | **Jobe v0.1.0** | SemIf (#2) | Jev 1.13 (#1) |
-|---|---:|---:|---:|
-| Intelligence (chance-corrected) | 74.3 | 79.0 | 85.7 |
-| Calibration | 71.7 | 72.6 | 82.7 |
-| Speed | **88.4** | 83.7 | 83.3 |
-| Cost | 59.7* | 59.5 | 52.0 |
-| **JevBench Score** | **72.8** | 73.1 | 74.4 |
-| hard-tier accuracy | 0.604 | 0.595 | 0.741 |
-
-\*Cost assumed at SemIf's self-hosted tariff; 73.5 at Jobe's own measured
-token counts; 70.3–75.8 across a 4× price band. This is a public-set run —
-the judge tier is not public and the held-out half is unseen — so it is an
-estimate of placement, not a placement (with the judge tier at SemIf's level
-it would read 74.1). #10 on the board scores 66.6. Under the previous v1.2
-rule the same run scored 74.9. Details, corrections and everything that did
-*not* work: `bench/RESULTS.md`.
-
-**Speed, measured:** 36.9 ms per decision end to end (3B backbone, batch 1);
-a 4B answers the standard tier at 107 ms p50. Many questions about one
-document: **11× per question** from the prefix cache, **15×** with batched
-suffixes, 0 argmax flips. 92× over CPU.
-
-**What's ours, beyond the SemIf protocol it adapts:** in-context answer-slot
-resolution, which makes SentencePiece backbones usable instead of rejected;
-the prefix cache and batched suffixes with fail-loud guards; and the
-instrumentation — a control battery passed on every tier, calibration that
-reproduces JevBench's own metrics to 0.0000, and three levers measured and
-rejected with numbers rather than assumed (order averaging, a single global
-temperature, reason-only-when-unsure). The training side lives in
-TheLab (a separate repo, private for now): exact-law world
-generators for the hard-tier families and a LoRA loop graded on the readout,
-whose first run cut held-out NLL from 1.62 to 0.76 in 20 steps.
-
-Three of the top five open systems are frozen backbones; freezing is the
-design, not a shortcut. Tag **`v0.1.0`** pins this exact state — weights
-revision, prompt version, adapter and run — so every later change is measured
-against it.
-
-**Submitted to JevBench** —
-[fstandhartinger/jevbench#28](https://github.com/fstandhartinger/jevbench/issues/28),
-awaiting their run on the full 534 decisions, which is the first number that
-counts as a placement.
+Independent project, not affiliated with Jev or TypeSafe. The decision protocol
+is adapted from [TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf) (MIT);
+`NOTICE` records what was taken and what was changed.
 
 ```python
 from jobe import Decision, Option, load, score
@@ -86,6 +29,90 @@ r.choice        # "infra"
 r.scores        # {"billing": 0.003, "infra": 0.997}
 r.confidence()  # 0.994  — chance-corrected; read the caveat below
 ```
+
+## What makes it its own thing
+
+**Nothing is trained.** Jobe is a stock Qwen3.5-4B with a readout on top — no
+fine-tune, no adapter, no NLI pre-training. Measured against the systems it is
+usually compared with on zero-shot emotion classification, where all four see
+only the label names:
+
+| | trained for decisions? | accuracy |
+|---|---|---:|
+| PrismNLI-0.4B | yes, on NLI | 0.725 |
+| Jev 1.13 | purpose-built, proprietary | 0.587 |
+| Laya | yes, fine-tuned | 0.587 |
+| **Jobe** | **no** | **0.570** |
+
+Level with a fine-tuned open model and within two points of a proprietary one,
+with no training at all. That is the claim: **the readout is most of the
+value, and you do not need to own a trained model to get it.** Two attempts to
+improve Jobe *by* training both made it worse, and both are written up.
+
+SemIf shares that property and is the closest comparison to this project — same
+family, same frozen-backbone idea, and it runs
+[in your browser](https://openjev.com/) with no install at all, which Jobe does
+not. What Jobe adds is below: in-context slot resolution, the prefix cache, and
+the instrumentation.
+
+**It runs inside your program.** No server, no endpoint, no per-call bill, and
+nothing leaves the machine. `pip install`, `load()`, `score()`.
+
+**Many questions about one document cost almost nothing.** Prime the evidence
+once and each further question is a suffix off the cached state: **11× per
+question** measured on a 2,000-token document, 15× with batched suffixes, zero
+argmax flips.
+
+**The confidence number is usable as a gate.** On a 39-decision agent-loop set,
+a threshold at 0.80 escalated 23% of decisions and caught **3 of 3** errors,
+leaving everything it auto-accepted correct.
+
+**Everything that did not work is written down.** Two training runs, a routed
+thinking pass, a top-two runoff and order averaging — all measured, all
+rejected, all in `bench/RESULTS.md` with the numbers that killed them.
+
+## See it work
+
+`demo/agent.py` is a browser agent where every decision is one forward pass of
+the frozen model: it snapshots the DOM as a numbered control table, then asks
+which element, which operation and what the status is. It books a flight in five
+steps and picks the cheapest *direct* fare over a cheaper connecting one.
+
+![a run](demo/run.png)
+
+## Where it stands
+
+**JevBench v1.2 public set, through JevBench's own harness** — 231 of 231
+answered, every result `strict_valid`, zero failures, frozen Qwen3.5-4B on one
+RTX 3080, no training.
+
+| tier | n | accuracy | ECE | p50 |
+|---|---:|---:|---:|---:|
+| easy | 48 | **1.000** | 0.016 | 108 ms |
+| standard | 72 | **0.986** | 0.046 | 107 ms |
+| hard | 111 | 0.604 | 0.133 | 224 ms |
+| all | 231 | **0.805** | 0.049 | |
+
+Under their live v1.3.0 rule that composites to **72.8**, against SemIf 73.1 and
+Jev 74.4 — the same band, with Jobe ahead on Speed and behind on the hard tier.
+It is a public-set estimate, not a placement: the judge tier is not public and
+the held-out half is unseen. Full numbers, caveats and corrections:
+[`bench/RESULTS.md`](bench/RESULTS.md). Submitted for their own run at
+[fstandhartinger/jevbench#28](https://github.com/fstandhartinger/jevbench/issues/28).
+
+## What it is not
+
+**Not a general zero-shot classifier.** On fixed labels with training data
+available, a tf-idf logistic regression scores 0.862 on the same emotion set
+against Jobe's 0.570, trains in 3.4 seconds and runs 4,000× faster per row. If
+your label set is stable and you can collect a few thousand examples, use that.
+
+**Not competitive on hard reasoning.** 0.604 on JevBench's hard tier against
+Jev's 0.741. The gap is arithmetic and multi-step inference, and it is a
+capability ceiling of a 4B, not a prompting problem.
+
+**Capped at 16 options** on the fast path, because the answer is a single
+letter. Above that use `score_text`, which is slower, or narrow the menu first.
 
 ## Why local, rather than an API
 
@@ -230,8 +257,15 @@ multi_hop (three, one in five domain skins) — were built here and moved to
 TheLab (`thelab.decisions.worlds`, private for now)
 together with the control-battery verdicts and the calibration code, because
 they take a records file and never touch a model. `jobe.records.to_decision`
-turns a generated record into a `Decision` for this readout. The hard-tier gap
-they exist to close is knowledge, not thinking depth (see `bench/RESULTS.md`).
+turns a generated record into a `Decision` for this readout.
+
+**They did not close the hard-tier gap, and that track is closed.** Two LoRA
+runs on these families both made JevBench worse, the better-trained one by
+more: held-out temporal_numeric reached 0.615 while JevBench's family of the
+same name fell from 3/15 to 2/15. A generator named after a benchmark family is
+not that family. The worlds remain useful as what they are — exact-law data
+with named mistakes, for teaching a law and reading back which misconception
+survives — and `bench/RESULTS.md` has the full account.
 
 ## Known limits
 
