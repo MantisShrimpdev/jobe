@@ -105,6 +105,9 @@ def main() -> int:
         else:
             held = 0
             set_topmost(True)
+    # Windows only lets a window be raised by a process allowed into the
+    # foreground; a double-click launch is, a background one may not be.
+    reveal()
     print("Jobe chat is open (it would not stay on top - use the pin button).", flush=True)
     return 0
 
