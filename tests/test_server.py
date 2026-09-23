@@ -320,3 +320,82 @@ def test_smoke_rejects_an_unnormalised_distribution(monkeypatch):
     monkeypatch.setattr(srv, "score", broken)
     with pytest.raises(RuntimeError, match="unnormalised"):
         srv.smoke(FakeBackbone())
+
+
+# ------------------------------------------------------- wide choices, opt-in
+
+
+@pytest.fixture()
+def wide_endpoint(tmp_path, monkeypatch):
+    """The same server with --wide on, and the forward pass still faked."""
+    from test_wide import FakeScorer
+    from jobe import prefix as prefix_mod
+    from jobe import wide as wide_mod
+
+    monkeypatch.setattr(srv, "score", fake_score)
+    monkeypatch.setattr(wide_mod, "score", fake_score)
+    monkeypatch.setattr(prefix_mod, "PrefixScorer", lambda *a, **kw: FakeScorer())
+    ledger = tmp_path / "ledger.jsonl"
+    srv.STATE.update({"backbone": FakeBackbone(), "ledger": str(ledger),
+                      "wide": True, "n": 0})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield "http://127.0.0.1:%d" % httpd.server_address[1], ledger
+    finally:
+        srv.STATE["wide"] = False
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+def wide_choice(n):
+    return ask({"type": "choice", "instructions": "Which element?",
+                "criteria": {"el-%d" % i: None for i in range(n)}})
+
+
+def test_wide_is_off_by_default_so_the_422_still_means_something(endpoint):
+    """The cap is a declared limit callers can rely on. Answering it with an
+    unvalidated estimator without being asked would be worse than refusing."""
+    base, _ = endpoint
+    assert post(base, wide_choice(230))[0] == 422
+
+
+@pytest.mark.parametrize("n", [17, 114, 230])
+def test_with_wide_on_a_wide_choice_is_answered(wide_endpoint, n):
+    base, _ = wide_endpoint
+    status, body = post(base, wide_choice(n))
+    assert status == 200
+    answer = body["answers"]["q"]
+    assert answer["choice"] in answer["probabilities"]
+    assert len(answer["probabilities"]) == n
+    assert sum(answer["probabilities"].values()) == pytest.approx(1.0)
+
+
+def test_a_narrowed_answer_says_so(wide_endpoint):
+    """A narrowed distribution and a flat one are not the same measurement, so
+    the caller is told which one it got, and which options were never opened."""
+    base, _ = wide_endpoint
+    meta = post(base, wide_choice(230))[1]["answers"]["q"]["_meta"]
+    assert meta["narrowed"] is True
+    assert meta["n_options"] == 230 and meta["passes"] > 1 and meta["depth"] == 2
+    assert isinstance(meta["estimated"], list)
+
+
+def test_a_narrow_question_is_not_narrowed_even_with_wide_on(wide_endpoint):
+    base, _ = wide_endpoint
+    meta = post(base, wide_choice(9))[1]["answers"]["q"]["_meta"]
+    assert meta["narrowed"] is False and "passes" not in meta
+
+
+def test_the_ledger_separates_narrowed_from_flat(wide_endpoint):
+    """They must not pool: a promotion gate reading this ledger would otherwise
+    average an estimator together with the readout it has not been checked against."""
+    base, ledger = wide_endpoint
+    post(base, wide_choice(230))
+    post(base, wide_choice(9))
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+    assert [r["narrowed"] for r in rows] == [True, False]
+    assert [r["n_options"] for r in rows] == [230, 9]
+    assert rows[0]["passes"] > 1 and rows[1]["passes"] == 1

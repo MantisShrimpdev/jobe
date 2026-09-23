@@ -269,9 +269,12 @@ survives — and `bench/RESULTS.md` has the full account.
 
 ## Known limits
 
-- **16 options maximum** — one single-token letter each. Above roughly that,
-  retrieve-then-decide beats decide-over-everything anyway; every system in this
-  family degrades sharply with menu size.
+- **16 options maximum per readout** — one single-token letter each. Above
+  roughly that, retrieve-then-decide beats decide-over-everything anyway; every
+  system in this family degrades sharply with menu size. Wider decisions are
+  refused with a 422 rather than silently truncated, and `--wide` narrows them
+  instead — but a narrowed distribution is a different estimator and has not
+  been checked against the flat one. See *Choices wider than 16 options*.
 - **`confidence()` cannot detect "none of these fit".** The softmax is
   normalised over the *declared* options, so it sums to 1 even when every option
   is wrong. Measured: a model answered `billing_question` at p = 0.998 for the
@@ -292,6 +295,61 @@ survives — and `bench/RESULTS.md` has the full account.
   same 512-token budget: the composite goes from −1.22 to −0.40, and the
   accuracy-weighted view from −0.33 to +0.23. Price the rule, not the technique
   (`bench/RESULTS.md`, `bench/route_composite.py`).
+
+## Choices wider than 16 options
+
+The letter readout scores one token per option, so it stops at 16. Agent loops
+ask much wider questions. `jev-browser` picks a DOM element out of up to 240
+candidates — its own constant reads `MAX_SINGLE = 240; // choice questions
+accept at most 255 options`. Measured on the 25 public tasks in its bench, using
+its own page model, on the first decision of each task:
+
+| | |
+|---|---|
+| median elements on a page | **4** |
+| p75 / p90 / max | 29 / 260 / **2,525** |
+| tasks within 16 options | **15/25** |
+| tasks over it | 10/25 — `webform` by exactly one |
+
+So the cap is not a uniform tax. It is bimodal: small pages are comfortable and
+large pages are impossible.
+
+`jobe.wide` narrows instead of refusing. Options become a tree of branching
+factor ≤ 16, one readout picks among the groups, the likeliest groups are opened
+and the probabilities multiply down the path — `P(option) = P(group) ×
+P(option | group)`. Every pass is about the same evidence, so it all runs off one
+primed prefix. A decision that already fits is passed straight through to the
+flat readout, unchanged and at no extra cost.
+
+```bash
+python -m jobe.server --model ... --wide     # off by default
+```
+
+**Off by default, deliberately.** The 422 is a declared limit that callers can
+rely on; answering it with an estimator that has not been validated would be
+worse than refusing. When it is on, every narrowed answer is flagged in `_meta`
+with its pass count and the options that were never opened individually, and the
+ledger records `narrowed` so the two never pool.
+
+**It is a different estimator, not a cheaper route to the same number.** A flat
+softmax over 16 letters and a product down a tree are not the same quantity, and
+nothing here claims they agree. The test is cheap and has not been run: at 16
+options or fewer both paths work, so the approximation can be scored directly
+against the flat readout. That needs the card.
+
+What is measured, driving their real bench through the endpoint:
+
+- **The refusals are gone.** `webform`, `hn-comments` and `wiki-link` went from
+  `status=exception` to running. 31 of 36 decisions were never narrowed at all —
+  every `noul` guard, `tool` at 12 options, `value` at 5.
+- **Cost stayed bounded**: at most **5 forward passes** for the widest decision,
+  against the 159 that opening every group would take. 50 passes for 36
+  decisions overall.
+- Through `jev-browser` the widest choice that arrives is 240, because it groups
+  first. That is two levels deep, where a marker probe recovers 5/5 at 230, 256
+  and 275 options. Only a raw 2,525-option decision reaches three levels, where
+  recovery falls to 2/5 — a summary-budget problem, not a narrowing one:
+  head-truncation scores the same 2/5, and raising `summary_limit` restores it.
 
 ## Serving it
 
@@ -368,7 +426,8 @@ src/jobe/
   records.py   a TheLab decision record as a Decision
   train_adapter.py  what TheLab's training loop needs from this readout: prompt ids, slot ids, gold
   server.py    POST /v1/systemone in the hosted API's wire format, plus the decision ledger
-tests/         83 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
+  wide.py      choices wider than the answer slots: narrow, do not refuse
+tests/         141 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next

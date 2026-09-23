@@ -63,6 +63,15 @@ from .prompt import (
     render_prompt,
 )
 from .readout import Readout, restricted_softmax, score
+from .wide import (
+    EXPAND_MASS,
+    MAX_EXPAND,
+    SUMMARY_LIMIT,
+    WideReadout,
+    build_tree,
+    score_wide,
+    summarise,
+)
 from .slots import (
     LETTERS,
     MAX_OPTIONS,
@@ -109,6 +118,13 @@ __all__ = [
     "resolve_slots",
     "restricted_softmax",
     "score",
+    "score_wide",
+    "WideReadout",
+    "build_tree",
+    "summarise",
+    "EXPAND_MASS",
+    "MAX_EXPAND",
+    "SUMMARY_LIMIT",
     "slot_token_ids",
     "verify_boundary",
 ]

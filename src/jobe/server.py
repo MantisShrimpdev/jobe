@@ -42,10 +42,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .model import load, pick_device
 from .prompt import Decision, DecisionError, Option
 from .readout import score
-from .slots import SlotError
+from .slots import MAX_OPTIONS, SlotError
+from .wide import score_wide
 
 STATE: dict = {"backbone": None, "ledger": None, "lock": threading.Lock(),
-               "gpu": threading.Lock(), "n": 0}
+               "gpu": threading.Lock(), "wide": False, "n": 0}
 
 
 # --------------------------------------------------------------------- guards
@@ -116,13 +117,23 @@ def options_for(question: dict) -> list[Option]:
     return [Option(id=k, description="%s: %s" % (k, v)) for k, v in pairs]
 
 
-def answer_for(backbone, state, question, key: str) -> dict:
-    """One question, one forward pass, in the wire format the callers expect."""
+def answer_for(backbone, state, question, key: str, scorer=None) -> dict:
+    """One question, one forward pass, in the wire format the callers expect.
+
+    With `--wide`, a question too wide for the answer slots is narrowed instead
+    of refused. Narrowing is off by default on purpose: the 422 is a DECLARED
+    limit that callers can rely on, and quietly answering it with an estimator
+    that has not been validated against the flat readout would be worse than
+    refusing. When it is on, every narrowed answer says so in `_meta`.
+    """
     options = options_for(question)
+    decision = Decision(
+        id=key, evidence=state, criterion=question.get("instructions", ""),
+        options=tuple(options), ordinal=question.get("type") == "score")
     with STATE["gpu"]:
-        readout = score(backbone.model, backbone.tokenizer, Decision(
-            id=key, evidence=state, criterion=question.get("instructions", ""),
-            options=tuple(options), ordinal=question.get("type") == "score"))
+        readout = (score_wide(backbone.model, backbone.tokenizer, decision, scorer=scorer)
+                   if STATE["wide"] else
+                   score(backbone.model, backbone.tokenizer, decision))
     probs = dict(readout.scores)
     kind = question["type"]
     if kind == "noul":
@@ -134,9 +145,15 @@ def answer_for(backbone, state, question, key: str) -> dict:
     answer["confidence"] = readout.confidence()
     answer["_meta"] = {
         "input_tokens": readout.input_tokens,
-        "forward_seconds": readout.forward_seconds,
-        "prompt_version": readout.prompt_version,
+        "n_options": len(options),
+        "narrowed": getattr(readout, "flat", True) is False,
     }
+    if answer["_meta"]["narrowed"]:
+        # Say which options were never examined individually. Their probability
+        # is a shared-out group mass, so ranking them against each other is not
+        # informative and a caller walking the ranking should know.
+        answer["_meta"].update(passes=readout.passes, depth=readout.depth,
+                               estimated=sorted(readout.estimated))
     return answer
 
 
@@ -205,6 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": bb is not None, "model": getattr(bb, "name", None),
                 "device": getattr(bb, "device", None), "adapter": getattr(bb, "adapter", None),
                 "decisions_served": STATE["n"],
+                "wide": STATE["wide"], "max_options": MAX_OPTIONS,
                 "kernels": kernel_path(bb.model) if bb else {},
                 "free_vram_mb": free_vram_mb(),
             })
@@ -226,11 +244,19 @@ class Handler(BaseHTTPRequestHandler):
 
         bb, state = STATE["backbone"], body.get("state")
         questions = body.get("questions") or {}
+        # Every question in a request is about the SAME state, which is the case
+        # the prefix cache exists for: encode the evidence once and score each
+        # question as a suffix off it. jev-browser asks ten per round over a
+        # ~2,900-token page, so re-encoding it each time is the dominant cost.
+        scorer = None
+        if STATE["wide"] and bb is not None:
+            from .prefix import PrefixScorer
+            scorer = PrefixScorer(bb.model, bb.tokenizer)
         answers, tokens = {}, 0
         for key, question in questions.items():
             t0 = time.perf_counter()
             try:
-                answer = answer_for(bb, state, question, key)
+                answer = answer_for(bb, state, question, key, scorer=scorer)
             except (DecisionError, SlotError) as exc:
                 # A declared limit is 422, not 500. Three consecutive 500s end a
                 # run on some harnesses, and a cap reported as a crash is
@@ -259,6 +285,9 @@ class Handler(BaseHTTPRequestHandler):
                 "decider": getattr(bb, "name", None),
                 "latency_ms": (time.perf_counter() - t0) * 1000,
                 "input_tokens": answer["_meta"]["input_tokens"],
+                "n_options": answer["_meta"]["n_options"],
+                "narrowed": answer["_meta"]["narrowed"],
+                "passes": answer["_meta"].get("passes", 1),
                 "outcome": None,
             })
 
@@ -278,6 +307,12 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--ledger", default=os.environ.get("JOBE_LEDGER", "runs/ledger.jsonl"),
                     help="one appended record per decision; empty string disables")
+    ap.add_argument("--wide", action="store_true",
+                    help="narrow choices wider than the %d answer slots instead of "
+                         "refusing them with 422. The narrowed distribution is an "
+                         "estimator that has NOT been validated against the flat "
+                         "readout; every narrowed answer is flagged in _meta."
+                         % MAX_OPTIONS)
     ap.add_argument("--min-free-mb", type=int, default=9000,
                     help="refuse to start on a card this full; 0 disables")
     args = ap.parse_args(argv)
@@ -292,6 +327,7 @@ def main(argv=None) -> int:
             "latency this server reports meaningless. Free the card or pass --min-free-mb 0."
             % (free, args.min_free_mb))
 
+    STATE["wide"] = args.wide
     STATE["ledger"] = args.ledger or None
     if STATE["ledger"]:
         os.makedirs(os.path.dirname(os.path.abspath(STATE["ledger"])) or ".", exist_ok=True)
@@ -311,8 +347,10 @@ def main(argv=None) -> int:
             "On --device cpu this is expected for Qwen3.5: it binds fla's Triton "
             "delta-rule kernel, which cannot take a CPU tensor." % (type(exc).__name__, exc))
     print("  smoke decision ok in %.2fs; kernels warm" % warm, flush=True)
-    print("ready on http://%s:%d/v1/systemone   device: %s   ledger: %s"
-          % (args.host, args.port, device, STATE["ledger"] or "off"), flush=True)
+    print("ready on http://%s:%d/v1/systemone   device: %s   wide: %s   ledger: %s"
+          % (args.host, args.port, device, "on (narrowed answers are estimates)"
+             if args.wide else "off (>%d options -> 422)" % MAX_OPTIONS,
+             STATE["ledger"] or "off"), flush=True)
     ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
     return 0
 
