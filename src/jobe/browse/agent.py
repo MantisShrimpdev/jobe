@@ -36,7 +36,7 @@ from .browser import Browser, StalePage
 from .policy import Choice, Policy
 from .text import CLAUSES as _CLAUSES, OPEN as _OPEN, unset_controls, unused_words
 
-HOME = "https://duckduckgo.com"
+HOME = "https://www.bing.com"          # see app.py: DuckDuckGo's browser upsell covers its pages
 IRREVERSIBLE_AT = 0.6
 
 #: What a line from the person can be. Round 1 read "show only nature stays" as
@@ -103,10 +103,11 @@ class Session:
     """One browser, one conversation, all decisions through one Policy."""
 
     def __init__(self, policy: Policy, emit, *, headless: bool = False, home: str = HOME,
-                 max_steps: int = 14, screenshots: bool = True):
+                 max_steps: int = 14, screenshots: bool = True, browser_args=None):
         self.policy = policy
         self.emit = emit
         self.headless = headless
+        self.browser_args = browser_args      # callable -> Browser kwargs (window placement)
         self.home = home
         self.max_steps = max_steps
         self.screenshots = screenshots
@@ -125,7 +126,13 @@ class Session:
         if self.browser is None or not self.browser.alive:
             if self.browser is not None:
                 self.browser.close()
-            self.browser = Browser(headless=self.headless)
+            placement = {}
+            if self.browser_args is not None and not self.headless:
+                try:
+                    placement = self.browser_args() or {}
+                except Exception:        # noqa: BLE001 - a placement is a nicety, never a failure
+                    placement = {}
+            self.browser = Browser(headless=self.headless, **placement)
             self.history = []
             self.pending_text = None
         return self.browser

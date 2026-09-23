@@ -154,7 +154,7 @@ def worker(headless: bool, home: str, brain: str = "local"):
                 raise RuntimeError("OPENROUTER_API_KEY is not set")
             probe(cfg)
             policy = RemotePolicy(cfg)
-        session = Session(policy, HUB.emit, headless=headless, home=home)
+        session = Session(policy, HUB.emit, headless=headless, home=home, browser_args=beside_chat)
         STATE["session"] = session
         STATE["ready"] = True
         _use(policy)
@@ -246,6 +246,60 @@ def _windows(title: str = TITLE) -> list:
 
 def window_open(title: str = TITLE) -> bool:
     return bool(_windows(title))
+
+
+def place_beside(chat: tuple, work: tuple, width: int, height: int, gap: int = 12) -> dict:
+    """Where the agent's browser goes: beside the chat window, inside that screen.
+
+    `chat` and `work` are (left, top, right, bottom); width and height are the
+    page viewport, and the window adds 90 px of frame and toolbar. Right of the
+    chat if there is room, else left of it, else nothing - the default place.
+    """
+    right_room = work[2] - chat[2] - 2 * gap
+    left_room = chat[0] - work[0] - 2 * gap
+    if right_room >= 700:
+        w = min(width, right_room)
+        x = chat[2] + gap
+    elif left_room >= 700:
+        w = min(width, left_room)
+        x = chat[0] - gap - w
+    else:
+        return {}
+    h = min(height + 90, work[3] - chat[1] - gap) - 90
+    return {"x": x, "y": chat[1], "width": w, "height": h}
+
+
+def beside_chat(width: int = 1180, height: int = 820) -> dict:
+    """`place_beside` for the chat window as it is right now.
+
+    Windows opens a background program's new window BEHIND the active one: on
+    2026-09-24 the agent's browser opened under the Claude window, and the
+    person saw only the screenshots and concluded the browser would not work.
+    Beside the chat, nothing covers it.
+    """
+    windows = _windows()
+    if not windows:
+        return {}
+    import ctypes
+    from ctypes import wintypes
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+    user32 = ctypes.windll.user32
+    user32.MonitorFromWindow.restype = wintypes.HANDLE
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+    r = wintypes.RECT()
+    user32.GetWindowRect(wintypes.HWND(windows[0]), ctypes.byref(r))
+    info = MONITORINFO()
+    info.cbSize = ctypes.sizeof(MONITORINFO)
+    if not user32.GetMonitorInfoW(user32.MonitorFromWindow(windows[0], 2), ctypes.byref(info)):
+        return {}
+    w = info.rcWork
+    return place_beside((r.left, r.top, r.right, r.bottom), (w.left, w.top, w.right, w.bottom),
+                        width, height)
 
 
 def set_topmost(on: bool, title: str = TITLE) -> bool:
@@ -463,7 +517,10 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--port", type=int, default=7900)
     ap.add_argument("--headless", action="store_true", help="drive the browser without showing it")
-    ap.add_argument("--home", default="https://duckduckgo.com")
+    # Bing, not DuckDuckGo: DuckDuckGo covers its pages in Chromium with an
+    # "Upgrade to our browser" box, which read to the person as "DuckDuckGo won't
+    # let me use the browser". Bing passed the live suite, headed and headless.
+    ap.add_argument("--home", default="https://www.bing.com")
     ap.add_argument("--brain", default="local",
                     help='"local" (Jobe on this card), or an OpenRouter model id that exposes '
                          "logprobs; the key comes only from OPENROUTER_API_KEY")

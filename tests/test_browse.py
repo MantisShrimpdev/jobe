@@ -357,6 +357,20 @@ def test_a_request_the_browser_marks_cross_site_is_refused(app_server):
     assert _post(base + "/say", {"X-Jobe-Token": token, "Sec-Fetch-Site": "cross-site"}) == 403
 
 
+def test_the_browser_opens_beside_the_chat_not_under_another_window():
+    """2026-09-24: it opened behind the Claude window and the person could not find it."""
+    from jobe.browse.app import place_beside
+    work = (1920, 0, 4480, 1392)                                   # a 2560-wide right screen
+    got = place_beside((2069, 63, 2875, 1051), work, 1180, 820)    # the chat, where it was
+    assert got == {"x": 2887, "y": 63, "width": 1180, "height": 820}
+    assert got["x"] + got["width"] <= work[2]
+    # chat hard against the right edge: the browser goes to its left
+    left = place_beside((3900, 40, 4460, 820), work, 1180, 820)
+    assert left["x"] + left["width"] <= 3900 and left["x"] >= work[0]
+    # no room either side: keep the default placement
+    assert place_beside((2200, 0, 4200, 900), work, 1180, 820) == {}
+
+
 def test_the_agent_browser_is_kept_off_the_chat_server():
     from jobe.browse import browser
     browser.protect(7900)

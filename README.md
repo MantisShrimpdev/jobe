@@ -434,7 +434,7 @@ window opens and stays on top of everything else; type to it, and Jobe drives a
 real browser beside it:
 
 ```
-hi jobe, open browser                    -> opens DuckDuckGo
+hi jobe, open browser                    -> opens Bing, beside the chat window
 search for the latest news on github     -> types it, presses Enter, stops on the results
 open the top one                         -> opens the first real result (adverts skipped)
 ```
