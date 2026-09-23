@@ -1061,6 +1061,35 @@ rather than a fact: on a consent banner the correct element is "Reject
 non-essential cookies", and the model chose "Accept all cookies" at 0.34
 confidence. An agent left to itself will accept tracking by default.
 
+## Attention implementation — eager stays, and eager is not the long-prompt curve (2026-09-23)
+
+`model.load` defaults to eager attention on the strength of a 130-token
+measurement. Qwen3.5 is hybrid, and under eager its full-attention layers
+materialise an n x n matrix per head, which was the suspect for the
+super-linear latency at browser sizes. `bench/attn_check.py` ran once per
+implementation: all 231 public tasks for regression, then identical prompts at
+four lengths, each warmed first so compilation is not timed.
+
+| | eager | sdpa |
+|---|---|---|
+| Public 231, correct | 171 | 172 |
+| Identical to the recorded 2026-09-22 run | 229 / 231 | 228 / 231 |
+| p50, public tasks | 74 ms | 76 ms |
+| 951 tokens | 202 ms | 207 ms |
+| 2,667 tokens | 1,084 ms | 1,578 ms |
+| 4,803 tokens | 5,065 ms | 18,666 ms |
+| 6,484 tokens (a DuckDuckGo results page) | 7,156 ms | 26,726 ms |
+
+- **No regression.** 229 of 231 predictions match the recorded run; the scored
+  path did not move.
+- **Eager stays.** sdpa is slower at every length and 3.7x slower on the real
+  page.
+- **The super-linear curve is not eager's attention matrix**: it is there under
+  sdpa too, and worse. Not measured: the reference PyTorch `causal_conv1d` path
+  this build falls back to (the log warns on every load) is the next suspect.
+  The browser agent sidesteps the curve rather than fixing it - its evidence is
+  compact lines, a median 482 tokens a step.
+
 ## What this does not cover
 
 - ~~Order averaging is still unrun as a scoring mode.~~ **Run (2026-09-23): it

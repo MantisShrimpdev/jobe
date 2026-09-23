@@ -22,6 +22,21 @@ This project contains code adapted from third-party open-source projects.
   token. Re-authored; expansion via reorder_cache and gathering the row ends
   before the LM head are this project's.
 
+- browser-use/jev-ultrafast (https://github.com/browser-use/jev-ultrafast) - MIT,
+  Copyright (c) browser-use. `src/jobe/browse/snapshot.js` is vendored
+  unchanged: the atomic DOM snapshot with code-owned node identities, visible
+  text, per-node operations and freshness guards. Adapted, and re-authored in
+  `src/jobe/browse/`: the dynamic operation + operation-specific target design
+  (one index per node; each operation chooses only among elements it can act
+  on), the next-step rules the questions carry, and the executor's
+  pre-input checks (connected, visible, enabled, unoccluded, geometry re-read
+  just before input; select-all then insert text). This project's own: the
+  Jobe in-process readout off one primed prefix, asking only the target head
+  the chosen operation needs, choosing TYPE_TEXT values among spans of the
+  user's goal instead of generating them, the irreversible-action pause, and
+  the Playwright executor.
+  `tests/fixtures/stays.html` is their fixture page, vendored unchanged.
+
 MIT-licensed portions are used under the terms of the MIT License; the original
 copyright and permission notices are retained via the per-module attribution
 headers.

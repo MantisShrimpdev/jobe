@@ -427,6 +427,34 @@ implementation actually bound** — a latency measured on the reference PyTorch
 path is not comparable to one measured on the Triton path, and nothing else in
 the output tells you which ran.
 
+## Talk to it: the chat window
+
+Double-click `desktop/Jobe.cmd` (or run `python desktop/jobe_chat.py`). A small
+window opens and stays on top of everything else; type to it, and Jobe drives a
+real browser beside it:
+
+```
+hi jobe, open browser                    -> opens DuckDuckGo
+search for the latest news on github     -> types it, presses Enter, stops on the results
+open the top one                         -> opens the first real result (adverts skipped)
+```
+
+Every step shows up in the window as it happens: the operation, the element it
+chose outlined on a screenshot, the probabilities behind both, and what the step
+changed. One process holds the model, the browser and the chat
+(`python -m jobe.browse.app`, port 7900); the model loads in about 15 seconds.
+
+The browser is Playwright's Chromium with a throwaway profile, never your own
+browser or its logins. Jobe stops rather than solving a "prove you're human"
+check - do it yourself in the browser window and say "continue" - and it pauses
+for your OK before anything its readout judges hard to undo.
+
+`bench/browse_suite.py` is the evaluation: fourteen tasks on a local fixture and
+on live sites, each judged by the page, not by Jobe's own DONE. Round 8 passed
+all 14 at a median of 262 ms per decision. The design, every rule with the
+failure that produced it, the measurements, and a review of DeepSeek Harness are
+in [docs/BROWSER.md](docs/BROWSER.md).
+
 ## Verifying a backbone
 
 EveryAppKit ships `tools/decisionGate.ts`, which runs the three controls that
@@ -450,7 +478,9 @@ src/jobe/
   train_adapter.py  what TheLab's training loop needs from this readout: prompt ids, slot ids, gold
   server.py    POST /v1/systemone in the hosted API's wire format, plus the decision ledger
   wide.py      choices wider than the answer slots: narrow, do not refuse
-tests/         141 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
+  browse/      the chat window's browser agent: snapshot, policy, guards, loop, app (docs/BROWSER.md)
+desktop/       Jobe.cmd + jobe_chat.py: open the always-on-top chat window
+tests/         189 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next

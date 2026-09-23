@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jobe</title>
+<link rel="stylesheet" href="/static/style.css">
+<script>window.JOBE_TOKEN = "__TOKEN__";</script>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">J</span>
+      <span class="name">Jobe</span>
+    </div>
+    <span class="pill" id="status" data-phase="loading"><i></i><b>Loading</b></span>
+    <div class="spacer"></div>
+    <button class="icon" id="pin" title="Keep on top" aria-label="Keep on top" aria-pressed="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+    </button>
+  </header>
+
+  <main class="feed" id="feed" aria-live="polite">
+    <section class="empty" id="empty">
+      <h1>What should I do?</h1>
+      <p>I drive a browser for you. Every click and keystroke is one choice by a model running on this PC.</p>
+      <div class="chips" id="suggest">
+        <button data-say="open browser">open browser</button>
+        <button data-say="search nike">search nike</button>
+        <button data-say="search for the latest news on github">latest news on github</button>
+        <button data-say="open the top result">open the top result</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="composer">
+    <form id="form" autocomplete="off">
+      <input id="input" type="text" placeholder="Ask Jobe to do something…" aria-label="Message" maxlength="500">
+      <button type="button" class="stop" id="stop" hidden aria-label="Stop">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      </button>
+      <button type="submit" class="send" id="send" aria-label="Send" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      </button>
+    </form>
+    <div class="hint" id="hint">Enter to send · ↑ for last · runs locally on your GPU</div>
+  </footer>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
