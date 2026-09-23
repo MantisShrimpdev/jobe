@@ -35,6 +35,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from jobe import Decision, Option, load, score  # noqa: E402
 
+# Timing anything on a shared card is worthless: an 8.6 GB model on a 10 GB card
+# spills the moment something else is resident, and the decisions then take
+# seconds for reasons that have nothing to do with the model. Measured the hard
+# way - a run against 6.6 GB of someone else's job reported 11 s a decision and
+# sent me looking for a missing CUDA kernel that was not the problem.
+def require_headroom(need_mb=9000):
+    import subprocess
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total",
+                              "--format=csv,noheader,nounits"], capture_output=True,
+                             text=True, timeout=10).stdout.strip().splitlines()[0]
+        used, total = (int(x) for x in out.split(","))
+    except Exception:
+        return
+    if total - used < need_mb:
+        raise SystemExit(
+            "%d MiB free of %d; this model needs about %d and will spill. Timings "
+            "would be meaningless. Free the card or pass --allow-shared-gpu."
+            % (total - used, total, need_mb))
+
+
 MAX_OPTIONS = 16
 GROUP = 6
 OP_DESC = {
@@ -288,6 +309,8 @@ def main(argv=None) -> int:
     ap.add_argument("--shot", default="", help="save a final screenshot here")
     ap.add_argument("--gate", type=float, default=0.80,
                     help="hand over when the status decision is less sure than this")
+    ap.add_argument("--allow-shared-gpu", action="store_true",
+                    help="run even if another job holds the card; timings will be junk")
     ap.add_argument("--no-keep-warm", action="store_true",
                     help="let the GPU downclock between decisions; see keep_warm()")
     args = ap.parse_args(argv)
@@ -301,6 +324,8 @@ def main(argv=None) -> int:
         print(s, flush=True)
         lines.append(s)
 
+    if not args.allow_shared_gpu:
+        require_headroom()
     print("loading the backbone ...", flush=True)
     t0 = time.perf_counter()
     bb = load(args.model, device="auto")

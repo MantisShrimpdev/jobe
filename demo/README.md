@@ -78,19 +78,29 @@ confirmation page and wandering into the nav bar.
 
 ## The honest numbers
 
-**About 3-4 seconds per decision, on prompts averaging 433 tokens.** Not the 80 ms in the
-README, and the gap is prompt length rather than anything else: 152 tokens costs
-80 ms and 500 tokens costs about 2.8 seconds, with the GPU verified at 1,965 MHz
-throughout, so it is not a power-state artefact. Three quarters of this
-backbone's layers are linear-attention, `causal_conv1d` is not installed on this
-machine, and transformers says so at every load — it runs those layers through
-reference PyTorch, which scales badly with sequence length. Installing the
-kernel is the first optimisation and it is not done here.
+**The speed numbers in this file are not trustworthy and are being re-measured.**
+A first pass reported about 3 seconds a decision on 433-token prompts against
+80 ms on a 126-token one, and I attributed the gap to the missing
+`causal_conv1d` kernel. That attribution was wrong. Checked by inspection, the
+expensive path is already fast:
 
-So: a real agent-loop prompt costs seconds on this install, against the roughly
-300 ms per call that published Jev-based browser agents report. The decisions
-are good. The speed claim belongs to short prompts and does not survive a
-19-control page.
+| hook | fast? | bound to |
+|---|---|---|
+| gated delta rule, chunked | **yes** | `fla.ops.gated_delta_rule.chunk` |
+| gated delta rule, recurrent | **yes** | `fla.ops.gated_delta_rule.fused_recurrent` |
+| `causal_conv1d_fn` | no | torch fallback |
+
+and the fallback that remains is one `F.conv1d`, a grouped depthwise
+convolution of kernel width four. That is a cuDNN call linear in sequence
+length; it cannot cost seconds.
+
+What the slow readings almost certainly are is memory pressure. This model is
+about 8.6 GB on a 10 GB card, so anything else resident makes it spill, and a
+later run against 6.6 GB of someone else's job reported **11 seconds** a
+decision. `require_headroom()` now refuses to start without room, because a
+timing taken on a shared card is not a timing. The decision-quality results are
+unaffected: what was chosen, and at what confidence, does not depend on how long
+it took.
 
 **Menus over sixteen are split rather than scored as text.** The letter protocol
 stops at sixteen options and scoring option text instead is about eighteen times
