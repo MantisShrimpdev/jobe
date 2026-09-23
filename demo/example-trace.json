@@ -7,37 +7,37 @@
    "element": "checkbox Direct flights only = unchecked",
    "op": "CLICK",
    "status": "continue",
-   "ms": 11367.709999991348
+   "ms": 13759.480700013228
   },
   {
    "step": 2,
    "element": "button Search flights",
    "op": "CLICK",
    "status": "continue",
-   "ms": 10816.82260002708
+   "ms": 12581.274099997245
   },
   {
    "step": 3,
    "element": "dropdown To = Choose a destination",
    "op": "SELECT",
    "status": "continue",
-   "ms": 14458.157499990193
+   "ms": 14048.070700024255
   },
   {
    "step": 4,
    "element": "button Search flights",
    "op": "CLICK",
    "status": "continue",
-   "ms": 13474.631900025997
+   "ms": 13213.36729999166
   },
   {
    "step": 5,
    "element": "button Select (Ryanair, 06:25, 2h 30m, Direct, \u00a398, Select)",
    "op": "CLICK",
    "status": "done",
-   "ms": 6716.7719999852125
+   "ms": 7333.707400015555
   }
  ],
  "decisions": 15,
- "model_ms": 56834.09400001983
+ "model_ms": 60935.90020004194
 }

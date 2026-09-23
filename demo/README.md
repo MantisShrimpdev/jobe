@@ -31,14 +31,22 @@ Five steps, fifteen decisions, no generation anywhere:
 | 3 | which element | `[7] dropdown To` | 0.98 |
 | 3 | which value | `Rome (FCO)` | 0.99 |
 | 4 | which element | `[14] button Search flights` | 0.99 |
-| 5 | which element | `[7] Select — Ryanair, 06:25, 2h 30m, Direct, £98` | 0.69 |
+| 5 | which element | `[7] Select — Ryanair, 06:25, 2h 30m, Direct, £98` | **0.43** |
 | 5 | step status | `done` | 0.98 |
 
-Step 5 is the one worth watching. Five fares are on screen, the cheapest is
-£98 with one stop... no: the cheapest *direct* is £98 and the cheapest overall
-is also £98, while a £112 fare has a stop and a £214 fare is direct. Picking it
-means reading price and stops together, which is a real judgement over a table,
-and the readout gets it in one forward pass.
+Step 5 is the one worth watching, and it is deliberately a trap. Five fares
+are on screen and **the cheapest is £89 on Wizz Air, with a stop**. The cheapest
+*direct* is £98 on Ryanair. Answering needs price and stops read together, so a
+model that only sorts on price gets it wrong.
+
+It gets it right, and it is honest about how close it was: **p = 0.43**, against
+0.98 and 0.99 on every easy decision in the run. That is the one number here
+that should give you pause. The confidence gate measured in
+`bench/computer_use.py` sits at 0.80, and if it were applied to element choices
+rather than only to status, this correct answer would have been escalated. On
+the 39-decision set a 0.80 gate caught 3 errors out of 3 and kept 30 decisions
+that were all right; on a 16-row table of fares it would hand over a right
+answer. The gate needs tuning per decision type, and that is not done.
 
 ## Five things the build taught, each of which cost a wrong run
 
@@ -70,7 +78,7 @@ confirmation page and wandering into the nav bar.
 
 ## The honest numbers
 
-**2,851 ms per decision, on prompts averaging 433 tokens.** Not the 80 ms in the
+**About 3-4 seconds per decision, on prompts averaging 433 tokens.** Not the 80 ms in the
 README, and the gap is prompt length rather than anything else: 152 tokens costs
 80 ms and 500 tokens costs about 2.8 seconds, with the GPU verified at 1,965 MHz
 throughout, so it is not a power-state artefact. Three quarters of this
