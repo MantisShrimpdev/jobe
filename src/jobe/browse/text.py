@@ -85,8 +85,32 @@ def pointing(clause: str) -> bool:
     return bool(_POINTING.match(clause))
 
 
+#: The polite way in, which is not part of the request. 2026-09-24, the first
+#: spoken request: "Can you search Nike and ..." was typed into Bing whole,
+#: "Can you" included.
+_PREAMBLE = re.compile(
+    r"^\s*(?:(?:hi|hey|hello|ok|okay)\s+)?(?:jobe[,!.]?\s+)?(?:please\s+)?"
+    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need|would\s+like|'d\s+like|wanna)\s+"
+    r"(?:you\s+)?to\s+|i'?d\s+like\s+(?:you\s+)?to\s+|let'?s\s+|please\s+)+", re.I)
+
+
+def strip_preamble(text: str) -> str:
+    """"Can you search Nike?" -> "search Nike" - what is asked, without the asking."""
+    stripped = _PREAMBLE.sub("", text).strip()
+    if not stripped or stripped == text.strip():
+        return text.strip()
+    if stripped[:1].isupper() and stripped[1:2].islower():
+        stripped = stripped[0].lower() + stripped[1:]
+    return stripped.rstrip(" ?")
+
+
 def normalise(goal: str) -> str:
-    """Give a run-on request its missing clause break: "... github open the top one"."""
+    """Take off a polite preamble, and give a run-on request its missing clause break.
+
+    "Can you search Nike" -> "search Nike"; "... github open the top one" ->
+    "... github, then open the top one".
+    """
+    goal = strip_preamble(goal).rstrip(" ?")
     m = _TRAILING_POINT.search(goal)
     if not m:
         return goal

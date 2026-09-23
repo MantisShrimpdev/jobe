@@ -382,6 +382,29 @@ class Browser:
         if kind == "click":
             self._after_navigation_maybe()
 
+    def nav(self, what: str) -> bool:
+        """The browser's own buttons: back, forward, reload, and plain scrolling.
+
+        False when there was nowhere to go (no page behind this one to go back to).
+        """
+        p = self.page
+        if what in ("down", "up"):
+            height = (p.viewport_size or {}).get("height", 820)
+            p.mouse.wheel(0, int(height * 0.85) * (1 if what == "down" else -1))
+            time.sleep(0.3)
+            return True
+        if what in ("top", "bottom"):
+            p.evaluate("b => scrollTo(0, b ? document.documentElement.scrollHeight : 0)", what == "bottom")
+            time.sleep(0.3)
+            return True
+        go = {"back": p.go_back, "forward": p.go_forward, "reload": p.reload}[what]
+        moved = go(wait_until="domcontentloaded", timeout=15000)
+        if moved is None and what != "reload":
+            return False
+        self._settle_load()
+        self._wait_quiet()
+        return True
+
     def _after_navigation_maybe(self):
         # A click or Enter may start a navigation. Give it a moment to begin,
         # then wait for the new document and for it to finish filling in - but

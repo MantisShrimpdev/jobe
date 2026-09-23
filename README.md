@@ -445,7 +445,10 @@ changed. One process holds the model, the browser and the chat
 (`python -m jobe.browse.app`, port 7900); the model loads in about 15 seconds.
 
 The model button in the header swaps Jobe for any OpenRouter model that returns
-logprobs - same loop, same rules - using the key in `OPENROUTER_API_KEY`.
+logprobs - same loop, same rules - using the key in `OPENROUTER_API_KEY`. The
+window also shrinks to a bar, asks when a choice is a close call, takes voice
+through Juno's local Whisper, and frees the GPU when you quit or close it; see
+[docs/BROWSER.md](docs/BROWSER.md#the-window).
 
 The browser is Playwright's Chromium with a throwaway profile, never your own
 browser or its logins. Jobe stops rather than solving a "prove you're human"
@@ -483,7 +486,7 @@ src/jobe/
   wide.py      choices wider than the answer slots: narrow, do not refuse
   browse/      the chat window's browser agent: snapshot, policy, guards, loop, app (docs/BROWSER.md)
 desktop/       Jobe.cmd + jobe_chat.py: open the always-on-top chat window
-tests/         214 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
+tests/         224 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next

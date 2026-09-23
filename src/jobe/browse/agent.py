@@ -35,7 +35,7 @@ import traceback
 from .browser import Browser, StalePage
 from .policy import Choice, Policy
 from .text import (CLAUSES as _CLAUSES, OPEN as _OPEN, clauses, named_words, normalise, pointing,
-                   search_first, search_url, site_request, unset_controls, unused_words)
+                   search_first, search_url, site_request, strip_preamble, unset_controls, unused_words)
 
 HOME = "https://www.bing.com"          # see app.py: DuckDuckGo's browser upsell covers its pages
 IRREVERSIBLE_AT = 0.6
@@ -71,6 +71,29 @@ _OPEN_BROWSER = re.compile(
 _CLOSE_BROWSER = re.compile(
     r"(?:(?:hi|hey|ok|okay)\s+)?(?:jobe[,!.]?\s*)?(?:please\s+)?(?:close|quit|exit|shut|kill)"
     r"(?:\s+down)?\s+(?:the\s+)?(?:web\s+)?(?:browser|chrome)(?:\s+please)?[.!]*", re.I)
+#: The browser's own buttons, by name - rules, not readout guesses.
+_COMMANDS = [
+    (re.compile(r"(?:please\s+)?(?:go\s+)?back(?:\s+(?:a|one)\s+page)?[.!]*|(?:go\s+to\s+)?(?:the\s+)?"
+                r"previous\s+page[.!]*", re.I), "back"),
+    (re.compile(r"(?:please\s+)?(?:go\s+)?forward(?:\s+(?:a|one)\s+page)?[.!]*", re.I), "forward"),
+    (re.compile(r"(?:please\s+)?(?:reload|refresh)(?:\s+(?:the\s+)?page)?[.!]*", re.I), "reload"),
+    (re.compile(r"(?:please\s+)?(?:scroll(?:\s+down)?|page\s+down|down)(?:\s+please)?[.!]*", re.I), "down"),
+    (re.compile(r"(?:please\s+)?(?:scroll\s+up|page\s+up|up)(?:\s+please)?[.!]*", re.I), "up"),
+    (re.compile(r"(?:please\s+)?(?:scroll\s+to\s+the\s+top|(?:go\s+to\s+the\s+)?top(?:\s+of\s+(?:the\s+)?page)?)"
+                r"[.!]*", re.I), "top"),
+    (re.compile(r"(?:please\s+)?(?:scroll\s+to\s+the\s+bottom|(?:go\s+to\s+the\s+)?bottom(?:\s+of\s+(?:the\s+)?"
+                r"page)?)[.!]*", re.I), "bottom"),
+    (re.compile(r"(?:please\s+)?(?:show|bring\s+(?:up|back)|where(?:'?s|\s+is))(?:\s+me)?\s+(?:the\s+|my\s+)?"
+                r"(?:web\s+)?browser[?.!]*", re.I), "show"),
+]
+_COMMAND_SAYS = {"back": "Went back", "forward": "Went forward", "reload": "Reloaded the page",
+                 "down": "Scrolled down", "up": "Scrolled up", "top": "Scrolled to the top",
+                 "bottom": "Scrolled to the bottom"}
+
+#: When the target question is this close, ask instead of guessing: the leader
+#: under half, and a runner-up with a real share of the rest.
+ASK_BELOW, ASK_RUNNER_UP = 0.5, 0.2
+
 _GREETING = re.compile(r"(?:hi|hey|hello|yo|g'?day)(?:\s+(?:there|jobe))?[!.]*", re.I)
 
 _CANCEL = re.compile(r"(no|n|nope|cancel|stop|don't|do not|never ?mind|leave it)[.!]*", re.I)
@@ -115,11 +138,15 @@ class Session:
     """One browser, one conversation, all decisions through one Policy."""
 
     def __init__(self, policy: Policy, emit, *, headless: bool = False, home: str = HOME,
-                 max_steps: int = 14, screenshots: bool = True, browser_args=None):
+                 max_steps: int = 14, screenshots: bool = True, browser_args=None,
+                 ask_when_unsure: bool = False, show_browser=None):
         self.policy = policy
         self.emit = emit
         self.headless = headless
         self.browser_args = browser_args      # callable -> Browser kwargs (window placement)
+        self.ask_when_unsure = ask_when_unsure  # a person is there to answer (the chat window)
+        self.show_browser = show_browser      # callable: put the browser window where it can be seen
+        self.asking: dict | None = None       # a close call waiting for the person to pick
         self.home = home
         self.max_steps = max_steps
         self.screenshots = screenshots
@@ -157,6 +184,11 @@ class Session:
         self.history = []
         self.pending_text = None
 
+    def clear(self):
+        """A new conversation in the same browser: nothing earlier counts any more."""
+        self.history, self.pending_text, self.pending, self.asking = [], None, None, None
+        self.blocked_goal, self._last_goal = None, ""
+
     def _check_stop(self):
         if self.stop_requested:
             self.stop_requested = False
@@ -179,7 +211,7 @@ class Session:
     def say(self, text: str) -> None:
         """One line from the person. Emits events; never raises to the caller."""
         started = time.perf_counter()
-        text = " ".join(text.split())
+        text = strip_preamble(" ".join(text.split())) or text.strip()
         try:
             if self.pending and re.fullmatch(r"(yes|y|allow|ok|okay|go|go ahead|do it|confirm)[.!]*",
                                              text, re.I):
@@ -193,6 +225,14 @@ class Session:
                 if _CANCEL.fullmatch(text):
                     self.emit("done", {"status": "stopped", "ms": _ms(started)})
                     return
+            if self.asking:
+                self.asking = None
+                if _CANCEL.fullmatch(text):
+                    self.emit("done", {"status": "stopped", "ms": _ms(started)})
+                    return
+                self.emit("note", {"text": "Dropped my question - doing this instead."})
+            if self._command(text, started):
+                return
             if self.blocked_goal and _CONTINUE.fullmatch(text):
                 goal, self.blocked_goal = self.blocked_goal, None
                 self.emit("note", {"text": "Picking up where I stopped: " + goal})
@@ -337,6 +377,17 @@ class Session:
             self._decision_event(steps, ch, page)
             self._check_stop()
 
+            if self.ask_when_unsure and self._unsure(ch):
+                # A close call between two things on the page: the person knows
+                # which they meant, and a pick costs them a click. A wrong guess
+                # costs a detour, or worse.
+                self.asking = {"goal": goal, "choice": ch, "page": page}
+                ranked = sorted(ch.target_probs.items(), key=lambda kv: -kv[1])
+                self.emit("ask", {"question": "Which one did you mean?", "steps": steps,
+                                  "options": [{"id": tid, "label": _short(ch.candidates[tid][0]).strip('"'), "p": p}
+                                              for tid, p in ranked[:3] if p >= 0.1 and tid in ch.candidates]})
+                return
+
             if ch.operation in ("DONE", "BLOCKED"):
                 self.emit("done", {"status": ch.operation.lower(), "steps": steps,
                                    "url": page.get("url"), "ms": _ms(started)})
@@ -376,6 +427,77 @@ class Session:
                                    "text": "three actions in a row changed nothing", "ms": _ms(started)})
                 return
         self.emit("done", {"status": "step_budget", "steps": steps, "ms": _ms(started)})
+
+    def _unsure(self, ch: Choice) -> bool:
+        if ch.operation not in ("CLICK", "SELECT") or len(ch.candidates) < 2:
+            return False
+        ranked = sorted(ch.target_probs.items(), key=lambda kv: -kv[1])
+        if len(ranked) < 2 or ranked[0][1] >= ASK_BELOW or ranked[1][1] < ASK_RUNNER_UP:
+            return False
+        first, second = (ch.candidates.get(t) for t, _ in ranked[:2])
+        return bool(first and second) and _short(first[0]) != _short(second[0])
+
+    def pick(self, tid: str) -> None:
+        """The person's answer to a close call: do that one, then carry on with the goal."""
+        started = time.perf_counter()
+        asked, self.asking = self.asking, None
+        try:
+            if asked is None:
+                self.emit("note", {"text": "That question was already answered."})
+                return
+            if tid == "stop" or tid not in asked["choice"].candidates:
+                self.emit("done", {"status": "stopped", "ms": _ms(started)})
+                return
+            ch = asked["choice"]
+            line, action, element = ch.candidates[tid]
+            ch.target, ch.target_line, ch.action, ch.element = tid, line, action, element
+            ch.target_p = ch.target_probs.get(tid, 0.0)
+            self._current_goal = asked["goal"]
+            self.emit("note", {"text": "Going with " + _short(line)})
+            if ch.operation == "CLICK" and self.policy.irreversible(ch) >= IRREVERSIBLE_AT:
+                self.pending = {"goal": asked["goal"], "choice": ch, "action": action, "text": None,
+                                "page": asked["page"], "steps": 0}
+                self.emit("confirm", {"what": _summary(ch), "text": "This looks hard to undo. Reply "
+                                      "\u201cyes\u201d to let me do it, or say anything else to cancel."})
+                return
+            self._execute(ch, action, None, asked["page"])
+            self.run_goal(asked["goal"], started, resume=True)
+        except Stop:
+            self.emit("done", {"status": "stopped", "ms": _ms(started)})
+        except Exception as exc:  # noqa: BLE001 - the chat must always get an answer
+            self.emit("error", {"text": "%s: %s" % (type(exc).__name__, str(exc)[:300]),
+                                "trace": traceback.format_exc()[-1500:]})
+
+    def _command(self, text: str, started: float) -> bool:
+        """back, forward, reload, scroll, show browser - done directly, no readout."""
+        what = next((w for rx, w in _COMMANDS if rx.fullmatch(text)), None)
+        if what is None:
+            return False
+        fresh = self.browser is None or not self.browser.alive
+        b = self._ensure_browser()
+        if fresh:
+            self.emit("status", {"text": "Opening " + self.home})
+            b.goto(self.home)
+        if what == "show":
+            try:
+                if self.show_browser is not None:
+                    self.show_browser()
+                b.page.bring_to_front()
+            except Exception:  # noqa: BLE001 - showing is a nicety
+                pass
+            self.emit("done", {"status": "done", "text": "it is beside this window", "url": b.page.url,
+                               "ms": _ms(started)})
+            return True
+        before = b.page.url
+        moved = b.nav(what)
+        said = _COMMAND_SAYS[what] if moved else "Nothing to go %s to" % what
+        self.history.append({"step": sum(1 for h in self.history if not h.get("goal_marker")) + 1,
+                             "summary": "%s -> URL now %s" % (said, _trim(b.page.url, 90)),
+                             "changed": moved, "operation": what.upper(), "url": b.page.url})
+        self._snapshot_event(said)
+        self.emit("done", {"status": "done", "text": said.lower() if b.page.url == before else None,
+                           "url": b.page.url, "ms": _ms(started)})
+        return True
 
     def _on_page(self, name: str) -> bool:
         """Is there something to click that carries this name? ("open Serra Lodge")"""

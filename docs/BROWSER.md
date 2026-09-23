@@ -130,6 +130,38 @@ So the window's browser is headed, and the suite runs its live tasks headed.
 Jobe never solves a challenge and adds no evasion beyond the one Chromium flag
 agent browsers commonly set.
 
+## The window
+
+- **Mini mode.** The arrows button shrinks the window to a bar - a live line of
+  what Jobe is doing, and the input - like Gemini's floating box. The server
+  resizes the window, because a page cannot. It opens back up by itself when
+  Jobe needs you: an OK to confirm, a close call to pick, a verification page,
+  an error.
+- **Quit.** The power button (click twice) closes the browser and ends the
+  process, freeing the ~9 GB the model holds on the card. Closing the window
+  does the same after two minutes (`--linger`), so a closed window no longer
+  leaves the model loaded.
+- **Queued messages.** Anything sent while the model is loading waits and goes
+  the moment it is ready.
+- **Close calls are asked.** When the target question is close - the leader
+  under 50%, the runner-up over 20% - Jobe shows both as buttons instead of
+  guessing. Only in the window; the suite never asks.
+- **Commands by rule:** back, forward, reload, scroll down/up, top, bottom,
+  show browser.
+- **Compact steps.** Only the newest step keeps its screenshot; older ones fold
+  to one line and open on a click. The bar under the header shows which page
+  the browser is on, and clicking it shows the browser.
+- **Suggestions** above the input follow the page: "open the top one" on a
+  results page, "go back" and "scroll down" elsewhere, "try again" after a
+  failure.
+- **Voice.** The mic records 16 kHz WAV and sends it to Juno's Whisper sidecar
+  (`jobe.browse.voice`): Juno's if it is running, otherwise started from
+  Juno's own script on the CPU with the small.en model. Nothing leaves the
+  machine and nothing said is logged. Polite lead-ins ("can you", "could you
+  please", "I want you to") are dropped before Jobe reads the request - the
+  first spoken request typed "Can you search Nike ..." into Bing whole.
+- **New chat** clears the conversation and keeps the browser where it is.
+
 ## A hosted brain instead of Jobe
 
 The model button in the window's header switches what answers the questions:

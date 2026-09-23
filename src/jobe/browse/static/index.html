@@ -8,8 +8,9 @@
 <script>window.JOBE_TOKEN = "__TOKEN__";</script>
 </head>
 <body>
+<!-- Icons are Lucide (ISC licence; see NOTICE), drawn inline so nothing loads from outside. -->
 <div class="app">
-  <header class="bar">
+  <header class="bar" id="bar">
     <div class="brand">
       <span class="mark" aria-hidden="true">J</span>
       <span class="name">Jobe</span>
@@ -33,28 +34,49 @@
       </form>
       <p class="menu-note" id="brainNote"></p>
     </div>
+    <span class="mini-line" id="miniLine" aria-live="polite">Loading…</span>
     <div class="spacer"></div>
+    <button class="icon" id="newchat" title="New chat" aria-label="New chat">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+    </button>
+    <button class="icon" id="mini" title="Shrink to a bar" aria-label="Shrink to a bar" aria-pressed="false">
+      <svg class="to-mini" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/></svg>
+      <svg class="to-full" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>
+    </button>
     <button class="icon" id="pin" title="Keep on top" aria-label="Keep on top" aria-pressed="true">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
     </button>
+    <button class="icon quit" id="quit" title="Quit Jobe - closes the browser and frees the GPU" aria-label="Quit Jobe">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg>
+    </button>
   </header>
+
+  <button class="where" id="where" type="button" hidden title="Show the browser">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+    <span id="whereText"></span>
+  </button>
 
   <main class="feed" id="feed" aria-live="polite">
     <section class="empty" id="empty">
       <h1>What should I do?</h1>
       <p>I drive a browser for you. Every click and keystroke is one choice by a model running on this PC.</p>
-      <div class="chips" id="suggest">
+      <div class="chips">
         <button data-say="open browser">open browser</button>
         <button data-say="search nike">search nike</button>
         <button data-say="search for the latest news on github">latest news on github</button>
-        <button data-say="open the top result">open the top result</button>
+        <button data-say="go to github">go to github</button>
       </div>
     </section>
   </main>
 
-  <footer class="composer">
+  <footer class="composer" id="composer">
+    <div class="suggest" id="suggest" aria-label="Suggestions" hidden></div>
     <form id="form" autocomplete="off">
       <input id="input" type="text" placeholder="Ask Jobe to do something…" aria-label="Message" maxlength="500">
+      <button type="button" class="mic" id="mic" title="Speak - click again when you are done" aria-label="Speak"
+              aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg>
+      </button>
       <button type="button" class="stop" id="stop" hidden aria-label="Stop">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
       </button>
@@ -62,8 +84,15 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
       </button>
     </form>
-    <div class="hint" id="hint">Enter to send · ↑ for last · runs locally on your GPU</div>
+    <div class="hint" id="hint">Enter to send · ↑ for last · the mic stays on this PC</div>
   </footer>
+
+  <div class="off" id="off" hidden>
+    <div>
+      <h2>Jobe is off</h2>
+      <p>The browser is closed and the GPU is free. Double-click Jobe.cmd to start it again.</p>
+    </div>
+  </div>
 </div>
 <script src="/static/app.js"></script>
 </body>

@@ -55,6 +55,16 @@ class Hub:
         self.subs: list[queue.Queue] = []
         self.log: list[dict] = []
         self.seq = 0
+        self.last_seen = time.time()      # when a window was last connected
+
+    def clear(self):
+        """Forget the conversation; sequence numbers keep counting, so no window replays it."""
+        with self.lock:
+            self.log = []
+
+    def watching(self) -> bool:
+        with self.lock:
+            return bool(self.subs)
 
     def emit(self, kind: str, data: dict):
         with self.lock:
@@ -78,11 +88,14 @@ class Hub:
         with self.lock:
             if q in self.subs:
                 self.subs.remove(q)
+            self.last_seen = time.time()
 
 
 HUB = Hub()
 STATE = {"ready": False, "busy": False, "model": None, "load_error": None, "session": None,
-         "commands": queue.Queue(), "started": time.time(), "brain": None, "local": None}
+         "commands": queue.Queue(), "started": time.time(), "brain": None, "local": None,
+         "stopping": False, "worker_done": threading.Event(), "full_height": None}
+SERVER: dict = {"httpd": None}
 
 #: What an OpenRouter model id looks like: vendor/model, optionally :variant.
 MODEL_ID = re.compile(r"[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?")
@@ -154,20 +167,28 @@ def worker(headless: bool, home: str, brain: str = "local"):
                 raise RuntimeError("OPENROUTER_API_KEY is not set")
             probe(cfg)
             policy = RemotePolicy(cfg)
-        session = Session(policy, HUB.emit, headless=headless, home=home, browser_args=beside_chat)
+        session = Session(policy, HUB.emit, headless=headless, home=home, browser_args=beside_chat,
+                          ask_when_unsure=True, show_browser=show_agent_browser)
         STATE["session"] = session
         STATE["ready"] = True
         _use(policy)
     except Exception as exc:  # noqa: BLE001
         STATE["load_error"] = "%s: %s" % (type(exc).__name__, exc)
         HUB.emit("error", {"text": "Could not start - " + STATE["load_error"]})
+        STATE["worker_done"].set()
         return
 
     while True:
         cmd, arg = STATE["commands"].get()
         if cmd == "quit":
             session.close()
+            STATE["worker_done"].set()
             return
+        if cmd == "clear":
+            session.clear()
+            HUB.clear()
+            HUB.emit("cleared", {})
+            continue
         if cmd == "brain":
             # Between goals only: the queue guarantees no goal is mid-flight.
             try:
@@ -182,6 +203,8 @@ def worker(headless: bool, home: str, brain: str = "local"):
         try:
             if cmd == "say":
                 session.say(arg)
+            elif cmd == "pick":
+                session.pick(arg)
             elif cmd == "close":
                 session.close()
                 HUB.emit("done", {"status": "closed"})
@@ -218,11 +241,21 @@ def _user32():
     user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.IsIconic.argtypes = [wintypes.HWND]
     return user32
 
 
 def _windows(title: str = TITLE) -> list:
     """Visible top-level windows whose title is exactly `title`."""
+    return _find(lambda t: t == title)
+
+
+def window_open(title: str = TITLE) -> bool:
+    return bool(_windows(title))
+
+
+def _find(test) -> list:
+    """Visible top-level windows whose title passes `test`."""
     if os.name != "nt":
         return []
     import ctypes
@@ -236,7 +269,7 @@ def _windows(title: str = TITLE) -> list:
         if n and user32.IsWindowVisible(hwnd):
             buf = ctypes.create_unicode_buffer(n + 1)
             user32.GetWindowTextW(hwnd, buf, n + 1)
-            if buf.value == title:
+            if test(buf.value):
                 found.append(hwnd)
         return True
 
@@ -244,8 +277,64 @@ def _windows(title: str = TITLE) -> list:
     return found
 
 
-def window_open(title: str = TITLE) -> bool:
-    return bool(_windows(title))
+def _rect(hwnd) -> tuple:
+    import ctypes
+    from ctypes import wintypes
+    r = wintypes.RECT()
+    ctypes.windll.user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(r))
+    return r.left, r.top, r.right - r.left, r.bottom - r.top
+
+
+def close_windows(title: str = TITLE) -> None:
+    """Close the chat window(s) the way the close button would."""
+    if os.name != "nt":
+        return
+    import ctypes
+    from ctypes import wintypes
+    post = ctypes.windll.user32.PostMessageW
+    post.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    for hwnd in _windows(title):
+        post(hwnd, 0x0010, 0, 0)                        # WM_CLOSE
+
+
+def resize_chat(mode: str, content: float, chrome: float, dpr: float, restore: float | None = None) -> dict:
+    """Mini mode shrinks the chat window to its bar; full gives back the height it had.
+
+    Sizes arrive in CSS pixels from the page, which alone knows how tall its own
+    bar is; `dpr` turns them into the physical pixels a window is measured in.
+    """
+    windows = _windows()
+    if not windows:
+        return {"ok": False, "why": "no chat window"}
+    hwnd, user32 = windows[0], _user32()
+    x, y, w, h = _rect(hwnd)
+    if mode == "mini":
+        if h > 220:
+            STATE["full_height"] = h
+        nh = int(round((chrome + content) * dpr))
+    else:
+        nh = STATE.get("full_height") or int(round((restore or 780) * dpr))
+    user32.SetWindowPos(hwnd, None, x, y, w, nh, 0x0004 | 0x0010)   # NOZORDER | NOACTIVATE
+    return {"ok": True, "rect": list(_rect(hwnd))}
+
+
+def show_agent_browser() -> bool:
+    """Put the agent's browser beside the chat window, restored if it was minimised.
+
+    Playwright's Chromium names its windows "... - Google Chrome for Testing".
+    """
+    hwnds = _find(lambda t: t.endswith("Chrome for Testing"))
+    if not hwnds:
+        return False
+    user32 = _user32()
+    place = beside_chat()
+    for hwnd in hwnds:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 4)                  # SW_SHOWNOACTIVATE
+        if place:
+            user32.SetWindowPos(hwnd, None, place["x"], place["y"], place["width"],
+                                place["height"] + 90, 0x0004 | 0x0010)
+    return True
 
 
 def place_beside(chat: tuple, work: tuple, width: int, height: int, gap: int = 12) -> dict:
@@ -334,6 +423,48 @@ def reveal(title: str = TITLE) -> None:
         user32.ShowWindow(hwnd, 4)                      # SW_SHOWNOACTIVATE
 
 
+# ---------------------------------------------------------------- shutdown
+
+
+def shutdown(reason: str) -> None:
+    """Stop everything - the browser, the model with this process, and the window.
+
+    Closing the window used to leave the model holding ~9 GB of the card until
+    someone found the process. Now the Quit button ends it, and so does the
+    window staying closed (see `watchdog`).
+    """
+    if STATE["stopping"]:
+        return
+    STATE["stopping"] = True
+    session = STATE.get("session")
+    if session is not None:
+        session.stop_requested = True                   # a running goal stops at its next step
+    HUB.emit("quit", {"text": reason})
+    STATE["commands"].put(("quit", None))
+
+    def finish():
+        time.sleep(1.0)                                 # let the reply and the event reach the window
+        STATE["worker_done"].wait(8)                    # the browser closes before the process goes
+        from . import voice
+        voice.stop()
+        close_windows()
+        if SERVER["httpd"] is not None:
+            SERVER["httpd"].shutdown()
+
+    threading.Thread(target=finish, daemon=True).start()
+
+
+def watchdog(linger: float, every: float = 5.0) -> None:
+    """Shut down once no window has been connected for `linger` seconds, and nothing runs."""
+    while not STATE["stopping"]:
+        time.sleep(every)
+        if HUB.watching() or STATE["busy"]:
+            HUB.last_seen = time.time()
+        elif time.time() - HUB.last_seen > linger:
+            shutdown("the chat window was closed")
+            return
+
+
 # -------------------------------------------------------------------- http
 
 
@@ -419,15 +550,25 @@ class Handler(BaseHTTPRequestHandler):
         # Media-type fence, from DeepSeek Harness's browser-trust note: a
         # cross-site "simple" POST (text/plain, a form) is sent without a CORS
         # preflight, so every command must be declared JSON - which such a
-        # request cannot be - before anything is parsed.
-        if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
-            return self._json(415, {"error": "commands are application/json"})
+        # request cannot be - before anything is parsed. Audio for /transcribe
+        # is WAV, which is no more "simple" than JSON.
+        path = self.path.split("?")[0]
+        kind = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
         n = int(self.headers.get("Content-Length", "0") or 0)
+        if path == "/transcribe":
+            if kind not in ("audio/wav", "audio/wave", "audio/x-wav"):
+                return self._json(415, {"error": "audio is audio/wav"})
+            from . import voice
+            if n > voice.MAX_WAV:
+                return self._json(413, {"error": "recording too long"})
+            result = voice.transcribe(self.rfile.read(n))
+            return self._json(200 if "text" in result else 503, result)
+        if kind != "application/json":
+            return self._json(415, {"error": "commands are application/json"})
         try:
-            body = json.loads(self.rfile.read(n) or b"{}")
+            body = json.loads(self.rfile.read(min(n, 1 << 16)) or b"{}")
         except ValueError:
             return self._json(400, {"error": "bad json"})
-        path = self.path.split("?")[0]
         if path == "/say":
             text = (body.get("text") or "").strip()[:1000]
             if not text:
@@ -447,6 +588,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(202, {"queued": True})
         if path == "/brain":
             return self._brain((body.get("model") or "").strip())
+        if path == "/pick":
+            STATE["commands"].put(("pick", str(body.get("id") or "stop")))
+            return self._json(202, {"queued": True})
+        if path == "/clear":
+            STATE["commands"].put(("clear", None))
+            return self._json(202, {"queued": True})
+        if path == "/quit":
+            shutdown("you quit Jobe")
+            return self._json(202, {"stopping": True})
+        if path == "/window":
+            try:
+                return self._json(200, resize_chat(str(body.get("mode")), float(body.get("content") or 0),
+                                                   float(body.get("chrome") or 0), float(body.get("dpr") or 1),
+                                                   body.get("restore")))
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "bad size"})
+        if path == "/voice":
+            from . import voice
+            voice.warm()
+            return self._json(202, {"warming": True})
         if path == "/pin":
             return self._json(200, {"pinned": bool(body.get("on")),
                                     "found": set_topmost(bool(body.get("on")))})
@@ -521,6 +682,8 @@ def main(argv=None) -> int:
     # "Upgrade to our browser" box, which read to the person as "DuckDuckGo won't
     # let me use the browser". Bing passed the live suite, headed and headless.
     ap.add_argument("--home", default="https://www.bing.com")
+    ap.add_argument("--linger", type=float, default=120,
+                    help="seconds to stay up once the chat window has closed (0: forever)")
     ap.add_argument("--brain", default="local",
                     help='"local" (Jobe on this card), or an OpenRouter model id that exposes '
                          "logprobs; the key comes only from OPENROUTER_API_KEY")
@@ -530,6 +693,9 @@ def main(argv=None) -> int:
     threading.Thread(target=worker, args=(args.headless, args.home, args.brain), daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     httpd.daemon_threads = True
+    SERVER["httpd"] = httpd
+    if args.linger > 0:
+        threading.Thread(target=watchdog, args=(args.linger,), daemon=True).start()
     print("Jobe chat on http://127.0.0.1:%d/" % args.port, flush=True)
     try:
         httpd.serve_forever()

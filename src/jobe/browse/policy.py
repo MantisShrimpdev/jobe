@@ -228,6 +228,7 @@ class Choice:
     element: dict | None = None
     timings: dict = field(default_factory=dict)
     passes: int = 0
+    candidates: dict = field(default_factory=dict)   # target id -> (line, action, element)
 
 
 class Policy:
@@ -381,6 +382,7 @@ class Policy:
             ch.target_p = t_r.scores[t_r.choice]
             ch.action = cands[t_r.choice]
             ch.element = by_index[t_r.choice.split(":")[0]]
+            ch.candidates = {tid: (lines[tid], cands[tid], by_index[tid.split(":")[0]]) for tid in cands}
         elif op in controls:
             ch.action = controls[op]
         ch.timings["total_ms"] = (time.perf_counter() - t0) * 1000

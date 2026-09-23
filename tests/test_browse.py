@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -213,6 +214,18 @@ def test_a_site_looked_up_by_name_prefers_its_own_results_and_never_page_furnitu
     assert names_host("blender", "www.blender.org") and not names_host("blender", "go.microsoft.com")
     assert names_host("the new york times", "www.nytimes.com")
     assert CHROME_LINK.match("Accessibility Help") and not CHROME_LINK.match("Download — Blender")
+
+
+@pytest.mark.parametrize("said,meant", [
+    ("Can you search Adidas and a white tennis shoe?", "search Adidas and a white tennis shoe"),
+    ("could you please go to github", "go to github"),
+    ("I want you to search for flights to Perth", "search for flights to Perth"),
+    ("hi jobe, can you search nike", "search nike"),
+    ("search nike", "search nike")])
+def test_the_polite_way_in_is_not_part_of_the_request(said, meant):
+    """The first spoken request typed its polite opening into Bing, 'Can you' and all."""
+    from jobe.browse.text import strip_preamble
+    assert strip_preamble(said) == meant
 
 
 def test_a_search_request_types_before_it_clicks():
@@ -539,6 +552,97 @@ def test_a_probed_hosted_model_is_queued_for_the_worker(app_server, monkeypatch,
         assert r.status == 200
     cmd, arg = q.get_nowait()
     assert cmd == "brain" and isinstance(arg, policy.RemotePolicy) and arg.name == "test/model"
+
+
+# ------------------------------------------------------ quality of life, 2026-09-24
+
+
+def _cmd(base, token, path, body=b"{}", kind="application/json"):
+    req = urllib.request.Request(base + path, data=body, method="POST",
+                                 headers={"Content-Type": kind, "X-Jobe-Token": token})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
+
+
+def test_new_chat_and_answers_are_queued_for_the_worker(app_server):
+    from jobe.browse import app
+    base, token = app_server
+    q = app.STATE["commands"]
+    while not q.empty():
+        q.get_nowait()
+    assert _cmd(base, token, "/clear")[0] == 202
+    assert _cmd(base, token, "/pick", b'{"id": "7"}')[0] == 202
+    assert [q.get_nowait(), q.get_nowait()] == [("clear", None), ("pick", "7")]
+
+
+def test_the_hub_forgets_a_cleared_conversation_but_keeps_counting():
+    from jobe.browse.app import Hub
+    hub = Hub()
+    hub.emit("user", {"text": "search nike"})
+    hub.clear()
+    hub.emit("cleared", {})
+    _, backlog = hub.subscribe()
+    assert [e["kind"] for e in backlog] == ["cleared"] and backlog[0]["seq"] == 2
+
+
+def test_audio_must_be_wav_and_reaches_speech_to_text(app_server, monkeypatch):
+    """The microphone posts WAV; anything else is refused before it is read."""
+    from jobe.browse import voice
+    base, token = app_server
+    assert _cmd(base, token, "/transcribe", b"RIFF....", kind="text/plain")[0] == 415
+    monkeypatch.setattr(voice, "ensure", lambda wait=90.0: None)
+    assert "error" in voice.transcribe(b"not a wav")
+    seen = []
+
+    class Reply:
+        def __init__(self, data): self.data = data
+        def read(self): return self.data
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    real_urlopen = urllib.request.urlopen
+
+    def fake_urlopen(req, timeout=0):
+        if not getattr(req, "full_url", str(req)).startswith(voice.STT_URL):
+            return real_urlopen(req, timeout=timeout)            # the test's own requests
+        seen.append((req.full_url, req.data[:4]))
+        return Reply(b'{"text": "search nike", "ms": 40}')
+
+    monkeypatch.setattr(voice.urllib.request, "urlopen", fake_urlopen)
+    code, body = _cmd(base, token, "/transcribe", b"RIFF" + b"\0" * 40, kind="audio/wav")
+    assert code == 200 and body["text"] == "search nike"
+    assert seen == [(voice.STT_URL + "/transcribe", b"RIFF")]
+
+
+def test_the_server_shuts_itself_down_once_the_window_has_gone(monkeypatch):
+    """Closing the window used to leave the model holding ~9 GB of the card."""
+    from jobe.browse import app
+    calls = []
+    monkeypatch.setattr(app, "shutdown", lambda reason: calls.append(reason) or
+                        app.STATE.__setitem__("stopping", True))
+    monkeypatch.setitem(app.STATE, "stopping", False)
+    monkeypatch.setitem(app.STATE, "busy", False)
+    monkeypatch.setattr(app.HUB, "last_seen", time.time() - 10)
+    monkeypatch.setattr(app.HUB, "watching", lambda: False)
+    app.watchdog(linger=1, every=0.01)
+    assert calls == ["the chat window was closed"]
+
+
+def test_close_calls_are_asked_not_guessed():
+    s = agent.Session.__new__(agent.Session)
+    ch = policy.Choice(operation="CLICK", op_probs={}, op_confidence=0.5,
+                       target_probs={"1": 0.46, "2": 0.32, "3": 0.1},
+                       candidates={"1": ('[1] link "Sign in"', {}, {}), "2": ('[2] link "Blender"', {}, {}),
+                                   "3": ('[3] link "Help"', {}, {})})
+    assert s._unsure(ch)
+    ch.target_probs = {"1": 0.77, "2": 0.04, "3": 0.02}
+    assert not s._unsure(ch)                                    # a clear winner is just done
+    ch.target_probs = {"1": 0.46, "2": 0.32}
+    ch.operation = "TYPE_TEXT"
+    assert not s._unsure(ch)                                    # only clicks and selects are asked
 
 
 def test_the_page_serves_the_token_only_to_itself(app_server):

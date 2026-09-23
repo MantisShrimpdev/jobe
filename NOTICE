@@ -37,6 +37,12 @@ This project contains code adapted from third-party open-source projects.
   the Playwright executor.
   `tests/fixtures/stays.html` is their fixture page, vendored unchanged.
 
+Lucide (https://lucide.dev, ISC License, Copyright (c) Lucide Contributors)
+- The chat window's icons (`src/jobe/browse/static/index.html`) are Lucide's
+  SVG paths, drawn inline: pin, power, square-pen, minimize-2, maximize-2, mic,
+  globe, chevron-down, arrow-up. Permission to use, copy, modify and distribute
+  them is granted under the ISC License with this notice retained.
+
 MIT-licensed portions are used under the terms of the MIT License; the original
 copyright and permission notices are retained via the per-module attribution
 headers.
