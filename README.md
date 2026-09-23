@@ -293,6 +293,59 @@ survives — and `bench/RESULTS.md` has the full account.
   accuracy-weighted view from −0.33 to +0.23. Price the rule, not the technique
   (`bench/RESULTS.md`, `bench/route_composite.py`).
 
+## Serving it
+
+`jobe.server` exposes one endpoint, `POST /v1/systemone`, in the wire format the
+hosted decision API uses. That is deliberate: the browser-agent harnesses built
+against that API — `browser-use/jev-ultrafast`, `Ying-Kai-Liao/jev-browser`, both
+MIT — speak it already and ship their own task suites, so serving it turns them
+into evaluation nobody here had to write. Stdlib only; no framework.
+
+```bash
+pip install -e .          # or PYTHONPATH=src
+python -m jobe.server --model D:/Coding/models/qwen35-4b --port 8901
+```
+
+```
+POST /v1/systemone   {"state": ..., "questions": {"owner": {"type": "choice", ...}}}
+->                   {"model": ..., "answers": {"owner": {...}}, "usage": {...}}
+```
+
+`choice` returns the chosen id plus the full distribution, `noul` returns
+p(true), `score` returns the distribution over levels; every answer carries the
+same chance-corrected `confidence` described above. The option mapping is the
+one `bench/jobe_direct.py` uses for JevBench, and `tests/test_server.py` asserts
+the two agree — if they drift, the published placement stops describing what is
+actually being served.
+
+This is **not** how the benchmark submission runs (see Next, item 8): Benchmark
+Heaven runs in-process adapters and the spec forbids a home endpoint. The server
+is for agent loops.
+
+Three things it does that a thin wrapper would not:
+
+- **A declared limit answers 422, not 500.** More than 16 options, a tokenizer
+  that cannot carry the slot contract, a prompt over the token limit — these are
+  contract refusals. Harnesses abort a run after three consecutive 500s, so a
+  cap reported as a crash reads as an infrastructure failure.
+- **It refuses to start if it cannot decide.** One real decision runs before the
+  port opens. That converts a backbone which cannot run at all into a startup
+  error instead of a 500 on somebody's first request — running this Qwen3.5
+  build on `--device cpu` does exactly that, because it binds `fla`'s Triton
+  delta-rule kernel, which rejects a CPU tensor. **This backbone is CUDA-only.**
+  The same pass warms the kernels, which in the browser demo cost 703 seconds on
+  the first call.
+- **Every decision is recorded, including the refusals**, appended as JSONL from
+  exactly one place (`--ledger`, default `runs/ledger.jsonl`): the evidence hash,
+  the option set, the distribution, the confidence, the latency, the model, and
+  an `outcome` field left null for whoever later learns what happened. A ledger
+  that only records successes under-reports exactly the cases worth auditing.
+
+`GET /health` reports readiness, decisions served, free VRAM, and **which kernel
+implementation actually bound** — a latency measured on the reference PyTorch
+path is not comparable to one measured on the Triton path, and nothing else in
+the output tells you which ran.
+
 ## Verifying a backbone
 
 EveryAppKit ships `tools/decisionGate.ts`, which runs the three controls that
@@ -314,7 +367,8 @@ src/jobe/
   prefix.py    encode the evidence once, score many questions as suffixes off the cache
   records.py   a TheLab decision record as a Decision
   train_adapter.py  what TheLab's training loop needs from this readout: prompt ids, slot ids, gold
-tests/         52 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
+  server.py    POST /v1/systemone in the hosted API's wire format, plus the decision ledger
+tests/         83 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next
