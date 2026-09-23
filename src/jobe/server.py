@@ -46,7 +46,7 @@ from .slots import MAX_OPTIONS, SlotError
 from .wide import score_wide
 
 STATE: dict = {"backbone": None, "ledger": None, "lock": threading.Lock(),
-               "gpu": threading.Lock(), "wide": False, "n": 0}
+               "gpu": threading.Lock(), "wide": False, "max_tokens": 4096, "n": 0}
 
 
 # --------------------------------------------------------------------- guards
@@ -127,13 +127,26 @@ def answer_for(backbone, state, question, key: str, scorer=None) -> dict:
     refusing. When it is on, every narrowed answer says so in `_meta`.
     """
     options = options_for(question)
+    if len(options) == 1:
+        # The caller declared exactly one option. The protocol needs two - there
+        # is nothing to read a distribution over - but the ANSWER is not in
+        # doubt, and 422-ing it fails a whole run over a degenerate case. Real
+        # callers hit this constantly: jev-browser asks which of `task.values`
+        # to type, and a goal with a single value has one option.
+        only = options[0]
+        return {"type": question["type"], "choice": only.id,
+                "probabilities": {only.id: 1.0}, "confidence": 1.0,
+                "_meta": {"input_tokens": 0, "n_options": 1, "narrowed": False,
+                          "degenerate": True}}
     decision = Decision(
         id=key, evidence=state, criterion=question.get("instructions", ""),
         options=tuple(options), ordinal=question.get("type") == "score")
+    limit = STATE["max_tokens"]
     with STATE["gpu"]:
-        readout = (score_wide(backbone.model, backbone.tokenizer, decision, scorer=scorer)
+        readout = (score_wide(backbone.model, backbone.tokenizer, decision,
+                              scorer=scorer, max_tokens=limit)
                    if STATE["wide"] else
-                   score(backbone.model, backbone.tokenizer, decision))
+                   score(backbone.model, backbone.tokenizer, decision, max_tokens=limit))
     probs = dict(readout.scores)
     kind = question["type"]
     if kind == "noul":
@@ -223,6 +236,7 @@ class Handler(BaseHTTPRequestHandler):
                 "device": getattr(bb, "device", None), "adapter": getattr(bb, "adapter", None),
                 "decisions_served": STATE["n"],
                 "wide": STATE["wide"], "max_options": MAX_OPTIONS,
+                "max_tokens": STATE["max_tokens"],
                 "kernels": kernel_path(bb.model) if bb else {},
                 "free_vram_mb": free_vram_mb(),
             })
@@ -251,7 +265,13 @@ class Handler(BaseHTTPRequestHandler):
         scorer = None
         if STATE["wide"] and bb is not None:
             from .prefix import PrefixScorer
-            scorer = PrefixScorer(bb.model, bb.tokenizer)
+            # The limit has to be passed HERE too. PrefixScorer keeps its own
+            # copy and defaults to 4096, so a server started with --max-tokens
+            # 8192 still refused a 6,449-token page with
+            # "PrefixError: prefix of 6449 tokens exceeds the limit 4096" -
+            # the flag appeared to do nothing, which is worse than not having it.
+            scorer = PrefixScorer(bb.model, bb.tokenizer,
+                                  max_tokens=STATE["max_tokens"])
         answers, tokens = {}, 0
         for key, question in questions.items():
             t0 = time.perf_counter()
@@ -313,6 +333,12 @@ def main(argv=None) -> int:
                          "estimator that has NOT been validated against the flat "
                          "readout; every narrowed answer is flagged in _meta."
                          % MAX_OPTIONS)
+    ap.add_argument("--max-tokens", type=int, default=4096,
+                    help="refuse prompts longer than this rather than truncating. The "
+                         "4096 default is this project's, not the model's: Qwen3.5 takes "
+                         "262144 and jev-browser sends states up to ~32768, so a real web "
+                         "page routinely blows 4096. Raising it costs VRAM for the KV "
+                         "cache, which on a full card is the thing that OOMs.")
     ap.add_argument("--min-free-mb", type=int, default=9000,
                     help="refuse to start on a card this full; 0 disables")
     args = ap.parse_args(argv)
@@ -328,6 +354,7 @@ def main(argv=None) -> int:
             % (free, args.min_free_mb))
 
     STATE["wide"] = args.wide
+    STATE["max_tokens"] = args.max_tokens
     STATE["ledger"] = args.ledger or None
     if STATE["ledger"]:
         os.makedirs(os.path.dirname(os.path.abspath(STATE["ledger"])) or ".", exist_ok=True)

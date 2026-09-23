@@ -59,7 +59,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from .prefix import PrefixScorer
+from .prefix import PrefixError, PrefixScorer
 from .prompt import Decision, DecisionError, Option
 from .readout import Readout, score
 from .slots import MAX_OPTIONS
@@ -237,6 +237,7 @@ def score_wide(
     expand_mass: float = EXPAND_MASS,
     max_expand: int = MAX_EXPAND,
     summary_limit: int = SUMMARY_LIMIT,
+    max_tokens: int = 4096,
     scorer: PrefixScorer | None = None,
 ) -> WideReadout:
     """Score a decision of any width, narrowing only when it does not fit.
@@ -249,6 +250,7 @@ def score_wide(
         cap: options one readout may carry. Defaults to the letter protocol's 16.
         expand_mass: open groups until this much mass is covered.
         max_expand: never open more than this many groups per level.
+        max_tokens: refuse prompts longer than this rather than truncating.
         summary_limit: characters of each group summary. Raising it makes deep
             options visible at higher levels, at the cost of prompt length.
         scorer: a `PrefixScorer` to reuse. One is built and primed if absent;
@@ -263,15 +265,32 @@ def score_wide(
     decision.validate(max_options=None)      # width is this module's problem, not an error
 
     if len(decision.options) <= cap:
-        flat = score(model, tokenizer, decision)
+        # Use the caller's primed prefix when there is one. Calling score()
+        # here instead - which this did - re-encodes the whole evidence for
+        # every question, and the callers that pass a scorer are exactly the
+        # ones asking MANY questions about ONE page: jev-browser sends nine per
+        # round (done, done_change, blocked, error, login, irreversible, tool,
+        # value, target) about a state that can run to 6,500 tokens. Nine full
+        # encodes instead of one encode and nine suffixes is the difference the
+        # prefix cache was built for: 11x per question after the first.
+        flat = None
+        if scorer is not None:
+            try:
+                scorer.prime(decision.evidence)      # a no-op if already primed
+                flat = scorer.score(decision)
+            except PrefixError:
+                flat = None                          # boundary failure: fall back
+        if flat is None:
+            flat = score(model, tokenizer, decision, max_tokens=max_tokens)
         return WideReadout(
             decision_id=flat.decision_id, option_ids=flat.option_ids,
             probabilities=flat.probabilities, passes=1, depth=1, flat=True,
             input_tokens=flat.input_tokens, total_seconds=flat.total_seconds,
-            meta={"prompt_sha256": flat.prompt_sha256})
+            meta={"prompt_sha256": flat.prompt_sha256,
+                  "prefix_cache": scorer is not None})
 
     if scorer is None:
-        scorer = PrefixScorer(model, tokenizer)
+        scorer = PrefixScorer(model, tokenizer, max_tokens=max_tokens)
     scorer.prime(decision.evidence)
 
     # Each level: open the likeliest groups, carrying their mass down. A group

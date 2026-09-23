@@ -101,7 +101,7 @@ def test_a_decision_within_the_cap_is_the_flat_readout(monkeypatch):
     the median page in the caller's bench has 4 elements."""
     d = decide(9, marker_at=3)
     monkeypatch.setattr(wide, "score",
-                        lambda m, t, dec: readout(dec, [0.2] + [0.1] * 8))
+                        lambda m, t, dec, **kw: readout(dec, [0.2] + [0.1] * 8))
     r = wide.score_wide(None, None, d, cap=16)
     assert r.flat is True and r.passes == 1 and r.depth == 1
     assert r.option_ids == tuple(o.id for o in d.options)
@@ -110,7 +110,7 @@ def test_a_decision_within_the_cap_is_the_flat_readout(monkeypatch):
 
 
 def test_exactly_at_the_cap_still_does_not_narrow(monkeypatch):
-    monkeypatch.setattr(wide, "score", lambda m, t, dec: readout(dec, [1 / 16] * 16))
+    monkeypatch.setattr(wide, "score", lambda m, t, dec, **kw: readout(dec, [1 / 16] * 16))
     assert wide.score_wide(None, None, decide(16), cap=16).flat is True
 
 
