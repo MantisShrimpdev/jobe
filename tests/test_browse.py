@@ -17,8 +17,9 @@ import pytest
 
 from jobe.browse import agent, policy
 from jobe.browse.browser import Browser
-from jobe.browse.text import (candidate_spans, has_value, leaves_site, results_page, search_query,
-                              unset_controls, unused_words, wants_a_result)
+from jobe.browse.text import (candidate_spans, has_value, leaves_site, normalise, results_page,
+                              search_first, search_query, site_request, typeable, unset_controls,
+                              unused_words, wants_a_result)
 
 # A page as snapshot.js returns it, trimmed to what the rules read.
 PAGE = {
@@ -147,6 +148,77 @@ def test_open_goals_are_recognised_by_their_last_clause():
     assert agent._OPEN.search(last("search for Lisbon, then open the cheapest one"))
     assert not agent._OPEN.search(last("search nike"))
     assert not agent._OPEN.search(last("reopen the tab"))          # a word, not a substring
+
+
+# ------------------------------------------- the first real session, 2026-09-24
+
+
+def test_sign_in_fields_and_buttons_are_never_offered_unasked():
+    """'open blender' on GitHub's login page typed into the username box, then 'Continue with Google'."""
+    login = [{"kind": "fill", "role": "textbox", "label": "Username or email address", "node": 1},
+             {"kind": "click", "role": "textbox", "label": "Open Username or email address", "node": 1},
+             {"kind": "click", "role": "button", "label": "Sign in", "node": 2},
+             {"kind": "click", "role": "button", "label": "Continue with Google", "node": 3},
+             {"kind": "click", "role": "link", "label": "Download — Blender", "node": 4},
+             {"kind": "fill", "role": "searchbox", "label": "Search mobile phones", "node": 5}]
+    kept = [a["label"] for a in policy.offered("open blender", login)]
+    assert kept == ["Download — Blender", "Search mobile phones"]
+    assert len(policy.offered("sign in to github", login)) == len(login)
+
+
+@pytest.mark.parametrize("text,want", [
+    ("go to github", ("go", "github")), ("got to github", ("go", "github")),
+    ("open blender", ("open", "blender")), ("visit the blender website", ("go", "blender")),
+    ("open the top one", None), ("open it", None), ("open browser", None), ("open a new tab", None)])
+def test_a_site_by_name_is_recognised(text, want):
+    """'got to github' was searched on Bing; 'open blender' typed the name into a login form."""
+    assert site_request(text) == want
+
+
+@pytest.mark.parametrize("text,opens,closes", [
+    ("hi jobe, open browser", True, False), ("open browser", True, False), ("open chrome", True, False),
+    ("close the browser", False, True), ("open blender", False, False), ("open browser and search nike", False, False)])
+def test_browser_commands_are_rules_not_guesses(text, opens, closes):
+    """A second 'open browser' with the browser already open was read as a task."""
+    assert bool(agent._OPEN_BROWSER.fullmatch(text)) is opens
+    assert bool(agent._CLOSE_BROWSER.fullmatch(text)) is closes
+
+
+def test_a_run_on_request_is_split_before_the_pointing_end():
+    """All of 'search for the latest news on github open the top one' was typed into Bing."""
+    goal = normalise("search for the latest news on github open the top one")
+    assert goal == "search for the latest news on github, then open the top one"
+    assert search_query(goal, "https://www.bing.com/") == "latest news on github"
+    assert normalise("search for open source tools") == "search for open source tools"
+    assert candidate_spans("search for rock and roll")[0] == "rock and roll"     # no split inside a value
+
+
+def test_a_click_command_has_nothing_to_type_and_ends_when_clicked():
+    """After clicking Image creator it typed 'image creator' into the prompt box."""
+    assert not typeable("click image creator") and typeable("find a stay in Copenhagen and open it")
+    s = agent.Session.__new__(agent.Session)
+    clicked = [{"step": 1, "operation": "CLICK", "changed": True, "label": "Image creator"}]
+    assert s._pointing_done("click image creator", clicked)
+    assert not s._pointing_done("click image creator", [dict(clicked[0], changed=False)])
+    assert not s._pointing_done("open the top one", clicked)          # names nothing: the readout decides
+
+
+def test_a_site_looked_up_by_name_prefers_its_own_results_and_never_page_furniture():
+    """Round 9: asked for the top result for 'blender', it clicked Bing's 'Accessibility Help'."""
+    import base64
+    from jobe.browse.text import CHROME_LINK, destination_host, names_host
+    ck = lambda d: "https://www.bing.com/ck/a?!&&p=1&u=a1" + base64.urlsafe_b64encode(d.encode()).decode().rstrip("=")
+    serp = "https://www.bing.com/search?q=blender"
+    assert destination_host(ck("https://www.blender.org/download/"), serp) == "www.blender.org"
+    assert names_host("blender", "www.blender.org") and not names_host("blender", "go.microsoft.com")
+    assert names_host("the new york times", "www.nytimes.com")
+    assert CHROME_LINK.match("Accessibility Help") and not CHROME_LINK.match("Download — Blender")
+
+
+def test_a_search_request_types_before_it_clicks():
+    """'search github' on a results page clicked a GitHub link instead of searching."""
+    assert search_first("search github") and search_first("find a stay in Lisbon")
+    assert not search_first("find the cheapest one") and not search_first("open the top result")
 
 
 def test_the_top_result_is_a_link_that_leaves_the_engine():

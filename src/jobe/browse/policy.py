@@ -32,7 +32,8 @@ from dataclasses import dataclass, field
 from ..prefix import PrefixScorer
 from ..prompt import Decision, Option
 from ..wide import WideReadout, score_wide
-from .text import candidate_spans, has_value, leaves_site, results_page, search_query, wants_a_result
+from .text import (CHROME_LINK, candidate_spans, destination_host, leaves_site, names_host, results_page,
+                   search_query, sign_in_thing, typeable, wants_a_result, wants_sign_in)
 
 OPERATIONS = {
     "CLICK": "Click one element: a link, button, tab, menu item, search result, suggestion, "
@@ -106,15 +107,19 @@ def _near(guard, label: str, limit: int = 110) -> str:
 
 
 def offered(goal: str, actions: list[dict]) -> list[dict]:
-    """The actions the model may choose among: adverts only when the goal asks for them.
+    """The actions the model may choose among.
 
-    On DuckDuckGo the first ten links under the search box were two adverts and
-    their sitelinks, and a 4B readout asked for "the top result" leans on
-    position - so an advert is not offered at all, rather than labelled.
+    * Adverts only when the goal asks for them. On DuckDuckGo the first ten
+      links under the search box were two adverts and their sitelinks, and a 4B
+      readout asked for "the top result" leans on position - so an advert is not
+      offered at all, rather than labelled.
+    * Sign-in fields and buttons only when the goal says to sign in. Jobe never
+      starts signing in on its own: without this, "open blender" on GitHub's
+      login page typed into the username box and clicked "Continue with Google".
     """
-    if _ASKS_FOR_ADS.search(goal):
-        return list(actions)
-    return [a for a in actions if not a.get("ad")]
+    ads_ok, sign_in_ok = bool(_ASKS_FOR_ADS.search(goal)), wants_sign_in(goal)
+    return [a for a in actions
+            if (ads_ok or not a.get("ad")) and (sign_in_ok or not sign_in_thing(a))]
 
 
 def action_space(actions: list[dict], guards: dict | None = None):
@@ -286,12 +291,14 @@ class Policy:
             typed, a checkbox ticked, DONE declared on a page that still listed
             Copenhagen - and a model-side check vetoed fourteen correct DONEs
             for every mistake it could have caught, so the guard is code.
-          * TYPE_TEXT is offered only if the goal contains something to type.
-            "open the top result" does not, and round 1 typed "top result"
-            into DuckDuckGo fourteen times.
+          * TYPE_TEXT is offered only if the goal contains something to type,
+            outside the clauses that only point at things. "open the top
+            result" has nothing, and round 1 typed "top result" into
+            DuckDuckGo fourteen times; "click image creator" has a label to
+            click, and 2026-09-24 typed it into Bing's image prompt.
         """
         ops = [op for op in ("CLICK", "SELECT") if targets.get(op)]
-        if targets.get("TYPE_TEXT") and has_value(goal):
+        if targets.get("TYPE_TEXT") and typeable(goal):
             ops.insert(1, "TYPE_TEXT")
         if pending:
             ops.append("SUBMIT")
@@ -305,7 +312,8 @@ class Policy:
     def choose(self, goal: str, page: dict, history: list[dict], pending: dict | None = None,
                allow_done: bool = True, skip_clicks: set | None = None,
                typed: set | None = None, unset: list[str] | None = None,
-               unused: list[str] | None = None) -> Choice:
+               unused: list[str] | None = None, must_type: bool = False,
+               site_hint: str | None = None) -> Choice:
         elements, targets, controls = action_space(offered(goal, page.get("actions") or []),
                                                    page.get("guards"))
         # Structural anti-loop: a click that already did nothing in this goal is
@@ -318,10 +326,17 @@ class Policy:
         url = page.get("url") or ""
         if targets.get("CLICK") and results_page(url) and wants_a_result(goal):
             # "open the top one" on a results page means a RESULT: a link that
-            # leaves the engine. Round 6 clicked DuckDuckGo's own "News for latest
-            # news on github" header and never left DuckDuckGo.
+            # leaves the engine and is not the page's own furniture. Round 6
+            # clicked DuckDuckGo's own "News for latest news on github" header;
+            # 2026-09-24 clicked Bing's "Accessibility Help".
             by_index = {e["index"]: e for e in elements}
-            out = {t: a for t, a in targets["CLICK"].items() if leaves_site(by_index[t].get("href"), url)}
+            out = {t: a for t, a in targets["CLICK"].items()
+                   if leaves_site(by_index[t].get("href"), url) and not CHROME_LINK.match(by_index[t]["label"])}
+            if site_hint:
+                # Looking a site up by name: its own results first, when there are any.
+                named = {t: a for t, a in out.items()
+                         if names_host(site_hint, destination_host(by_index[t].get("href"), url))}
+                out = named or out
             if out:
                 targets["CLICK"] = out
         self._typed = typed or set()
@@ -329,6 +344,8 @@ class Policy:
         ops = self.operations(goal, targets, controls, pending, allow_done)
         if "TYPE_TEXT" in ops and not [x for x in candidate_spans(goal) if x.lower() not in self._typed]:
             ops.remove("TYPE_TEXT")          # every value in the goal was already typed and submitted
+        if must_type and "TYPE_TEXT" in ops:
+            ops = ["TYPE_TEXT"]              # a search types before it clicks (see text.search_first)
         descriptions = self.describe_ops(ops, elements, targets, pending)
 
         t0 = time.perf_counter()

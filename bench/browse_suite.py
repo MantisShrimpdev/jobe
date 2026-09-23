@@ -31,6 +31,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -89,6 +90,26 @@ TASKS = [
     {"id": "bing-search-open", "set": "live", "url": "https://www.bing.com",
      "turns": ["search for the python programming language", "open the top result"],
      "check_url": lambda u: "bing.com" not in u and u.startswith("http")},
+    # ---- the first real session, 2026-09-24, word for word; each failed then
+    {"id": "bing-click", "set": "live", "url": "https://www.bing.com",
+     "turns": ["click image creator"],
+     "check_url": lambda u: "/images/create" in u, "expect_status": "done", "expect_typed": []},
+    {"id": "run-on", "set": "live", "url": "https://www.bing.com",
+     "turns": ["search for the latest news on github open the top one"],
+     "check_url": lambda u: "bing.com" not in u and u.startswith("http"),
+     "expect_typed": ["latest news on github"]},
+    {"id": "search-again", "set": "live", "url": "https://www.bing.com/search?q=latest+news+on+github",
+     "turns": ["search github"],
+     "check_url": lambda u: "q=github" in u.lower(), "expect_typed": ["github"]},
+    {"id": "go-to-site", "set": "live", "url": "https://www.bing.com",
+     "turns": ["got to github"],
+     "check_url": lambda u: (urlparse(u).hostname or "").endswith("github.com")},
+    {"id": "open-by-name", "set": "live", "url": "https://github.com/login",
+     "turns": ["open blender"],
+     "check_url": lambda u: "blender.org" in u, "expect_typed": []},
+    {"id": "browser-again", "set": "live", "url": "https://www.bing.com",
+     "turns": ["open browser", "open browser"],
+     "check_url": lambda u: "bing.com" in u, "expect_status": "ready"},
     # ------------------------------------------------------------ stretch
     {"id": "flight-search", "set": "stretch", "url": "https://duckduckgo.com",
      "turns": ["find the best flight from melbourne to perth in october"],
@@ -140,6 +161,10 @@ def main(argv=None) -> int:
                 ok = ok and bool(t["check_url"](url))
             if "check" in t:
                 ok = ok and bool(page.evaluate(t["check"]))
+            if "expect_status" in t:
+                ok = ok and status == t["expect_status"]
+            if "expect_typed" in t:
+                ok = ok and [d["text"] for k, d in events if k == "typing"] == t["expect_typed"]
             if wall:
                 err = "WALL: " + wall
         except Exception as exc:  # noqa: BLE001

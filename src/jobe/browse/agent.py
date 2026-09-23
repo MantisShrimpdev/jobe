@@ -34,7 +34,8 @@ import traceback
 
 from .browser import Browser, StalePage
 from .policy import Choice, Policy
-from .text import CLAUSES as _CLAUSES, OPEN as _OPEN, unset_controls, unused_words
+from .text import (CLAUSES as _CLAUSES, OPEN as _OPEN, clauses, named_words, normalise, pointing,
+                   search_first, search_url, site_request, unset_controls, unused_words)
 
 HOME = "https://www.bing.com"          # see app.py: DuckDuckGo's browser upsell covers its pages
 IRREVERSIBLE_AT = 0.6
@@ -60,6 +61,17 @@ _NOT_OPENING = {"checkbox", "radio", "switch", "combobox", "textbox", "searchbox
 #: After Jobe stops at a human-verification page, the person solves it and says so.
 _CONTINUE = re.compile(r"(continue|go on|carry on|resume|keep going|try again|done|ok(?:ay)?|"
                        r"i did it|i've done it|solved(?: it)?|all good|go ahead)[.!]*", re.I)
+
+#: Commands with one meaning, answered by rule rather than by the readout.
+#: 2026-09-24: "open browser" with a browser already open was read as a task.
+_OPEN_BROWSER = re.compile(
+    r"(?:(?:hi|hey|hello|ok|okay)\s+)?(?:jobe[,!.]?\s*)?(?:please\s+)?(?:can\s+you\s+)?"
+    r"(?:open|start|launch|fire\s+up|bring\s+up|show)(?:\s+up)?\s+(?:the\s+|a\s+|my\s+)?(?:web\s+)?"
+    r"(?:browser|chrome)(?:\s+please)?[.!]*", re.I)
+_CLOSE_BROWSER = re.compile(
+    r"(?:(?:hi|hey|ok|okay)\s+)?(?:jobe[,!.]?\s*)?(?:please\s+)?(?:close|quit|exit|shut|kill)"
+    r"(?:\s+down)?\s+(?:the\s+)?(?:web\s+)?(?:browser|chrome)(?:\s+please)?[.!]*", re.I)
+_GREETING = re.compile(r"(?:hi|hey|hello|yo|g'?day)(?:\s+(?:there|jobe))?[!.]*", re.I)
 
 _CANCEL = re.compile(r"(no|n|nope|cancel|stop|don't|do not|never ?mind|leave it)[.!]*", re.I)
 
@@ -117,6 +129,7 @@ class Session:
         self.stop_requested = False
         self.pending: dict | None = None      # an irreversible action awaiting the person
         self.blocked_goal: str | None = None  # a goal stopped at a human-verification page
+        self._stale: set = set()              # labels whose element failed the pre-click check
         self._current_goal = ""
         self._last_goal = ""
 
@@ -187,8 +200,29 @@ class Session:
                 return
             self.blocked_goal = None
 
+            if _GREETING.fullmatch(text):
+                self.emit("note", {"text": "Hi! Tell me what to do - “open browser”, then something "
+                                           "like “search for the latest news on github”."})
+                self.emit("done", {"status": "ready", "ms": _ms(started)})
+                return
+
+            parts = clauses(text)
+            # "open browser and search nike": the browser opens either way, so the
+            # command clause is spent and the rest is the goal.
+            if len(parts) > 1 and _OPEN_BROWSER.fullmatch(parts[0]):
+                parts = parts[1:]
+                text = ", then ".join(parts)
+            site = site_request(parts[0]) if parts and not _URL.search(parts[0]) else None
+
             t0 = time.perf_counter()
-            intent, probs, conf = self.intent(text)
+            if _OPEN_BROWSER.fullmatch(text):
+                intent, probs, conf = "open", {"open": 1.0}, 1.0      # a fixed command, not a guess
+            elif _CLOSE_BROWSER.fullmatch(text):
+                intent, probs, conf = "close", {"close": 1.0}, 1.0
+            elif site:
+                intent, probs, conf = "act", {"act": 1.0}, 1.0
+            else:
+                intent, probs, conf = self.intent(text)
             self.emit("intent", {"intent": intent, "probabilities": probs, "confidence": conf,
                                  "ms": (time.perf_counter() - t0) * 1000})
 
@@ -200,7 +234,10 @@ class Session:
             url = _URL.search(text)
             fresh = self.browser is None or not self.browser.alive
             b = self._ensure_browser()
-            if intent == "open" or fresh:
+            # A site by name: "go to X" always looks X up; "open X" does only when
+            # nothing on the page carries the name ("open Serra Lodge" is a click).
+            route = bool(site) and (site[0] == "go" or fresh or not self._on_page(site[1]))
+            if intent == "open" or (fresh and not route):
                 target = url.group(1) if (url and intent != "read") else self.home
                 self.emit("status", {"text": "Opening " + target})
                 b.goto(target)
@@ -223,14 +260,20 @@ class Session:
                 self.emit("done", {"status": "read", "url": page.get("url"), "ms": _ms(started)})
                 return
 
-            self.run_goal(text, started)
+            if route:
+                self._go_to_site(site[1], started)
+                if len(parts) > 1:
+                    self.run_goal(normalise(", then ".join(parts[1:])), time.perf_counter())
+                return
+            self.run_goal(normalise(text), started)
         except Stop:
             self.emit("done", {"status": "stopped", "ms": _ms(started)})
         except Exception as exc:  # noqa: BLE001 - the chat must always get an answer
             self.emit("error", {"text": "%s: %s" % (type(exc).__name__, str(exc)[:300]),
                                 "trace": traceback.format_exc()[-1500:]})
 
-    def run_goal(self, goal: str, started: float, *, resume: bool = False) -> None:
+    def run_goal(self, goal: str, started: float, *, resume: bool = False,
+                 site_hint: str | None = None) -> None:
         """Work on one goal until DONE, BLOCKED, a stop rule, or the step budget.
 
         `resume` continues the SAME goal - after the person allowed a paused
@@ -246,6 +289,7 @@ class Session:
                 self.history.append({"goal_marker": True, "summary": self._last_goal or "earlier"})
             self._last_goal = goal
             self.pending_text = None
+            self._stale = set()
         keys: list[str] = []
         steps, unchanged = 0, 0
         while steps < self.max_steps:
@@ -256,8 +300,12 @@ class Session:
                 time.sleep(0.3)
                 continue
             mine = self._goal_history()
+            if self._pointing_done(goal, mine):
+                self.emit("done", {"status": "done", "steps": steps, "url": page.get("url"),
+                                   "ms": _ms(started)})
+                return
             skip = {h["label"] for h in mine if h.get("operation") == "CLICK" and not h.get("changed")
-                    and h.get("label")}
+                    and h.get("label")} | {s for s in self._stale if s}
             typed = {h["text"].lower() for h in mine if h.get("operation") == "TYPE_TEXT" and h.get("text")
                      and h.get("submitted")}
             wall = b.challenge(page)
@@ -280,9 +328,11 @@ class Session:
                                   clicked=[h.get("label") for h in mine if h.get("operation") == "CLICK"],
                                   title=page.get("title") or "",
                                   url=page.get("url") or "") if allowed and not unset else []
+            must_type = search_first(goal) and not any(h.get("operation") == "TYPE_TEXT" for h in mine)
             ch = self.policy.choose(goal, page, self.history, self.pending_text,
                                     allow_done=allowed and not unset and not unused,
-                                    skip_clicks=skip, typed=typed, unset=unset, unused=unused)
+                                    skip_clicks=skip, typed=typed, unset=unset, unused=unused,
+                                    must_type=must_type, site_hint=site_hint)
             steps += 1
             self._decision_event(steps, ch, page)
             self._check_stop()
@@ -326,6 +376,46 @@ class Session:
                                    "text": "three actions in a row changed nothing", "ms": _ms(started)})
                 return
         self.emit("done", {"status": "step_budget", "steps": steps, "ms": _ms(started)})
+
+    def _on_page(self, name: str) -> bool:
+        """Is there something to click that carries this name? ("open Serra Lodge")"""
+        if self.browser is None or not self.browser.alive:
+            return False
+        try:
+            page = self.browser.observe()
+        except StalePage:
+            return False
+        want = named_words(name)
+        return bool(want) and any(a.get("kind") == "click" and want <= named_words(a.get("label") or "")
+                                  for a in page.get("actions") or [])
+
+    def _go_to_site(self, name: str, started: float) -> None:
+        """"go to github": look the name up, then open the top result.
+
+        The lookup is a results URL, not typing, and the last step is the same
+        "open the top result" the loop already does well. 2026-09-24: "got to
+        github" was typed into Bing as a search; "open blender" on a login page
+        typed the name into the username box.
+        """
+        b = self._ensure_browser()
+        self.emit("status", {"text": "Looking up “%s”" % name})
+        b.goto(search_url(self.home, name))
+        self.run_goal("open the top result", started, site_hint=name)
+
+    def _pointing_done(self, goal: str, mine: list[dict]) -> bool:
+        """'click image creator' is finished once Image creator was clicked and the page changed.
+
+        2026-09-24: after that click the readout gave DONE 0.11 and typed "image
+        creator" into the image prompt instead. Only a goal that is one pointing
+        clause naming its target qualifies; "open the top one" names nothing and
+        is still the readout's call.
+        """
+        parts = clauses(goal)
+        if len(parts) != 1 or not pointing(parts[0]):
+            return False
+        want = named_words(parts[0])
+        return bool(want) and any(h.get("operation") == "CLICK" and h.get("changed")
+                                  and want <= named_words(h.get("label") or "") for h in mine)
 
     def _goal_history(self) -> list[dict]:
         mine = []
@@ -382,6 +472,9 @@ class Session:
         try:
             b.act(action, text=text)
         except StalePage as exc:
+            # Not offered again in this goal: 2026-09-24 picked the same failing link
+            # three times running and the loop gave up as stuck.
+            self._stale.add((ch.element or {}).get("label"))
             self.emit("note", {"text": "Page moved before I could act (%s) - looking again." % exc})
             return True
         try:

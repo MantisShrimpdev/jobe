@@ -53,11 +53,97 @@ def _words(goal: str) -> list[str]:
 #: Copenhagen and open it" searched, saw the stay, and declared DONE without
 #: opening it; "open the top result" stopped before clicking anything.
 OPEN = re.compile(r"\b(open|click|view|visit|follow|go into|go to the)\b", re.I)
-CLAUSES = re.compile(r",\s*(?:and\s+|then\s+)?|\s+(?:and then|then|and)\s+", re.I)
+#: Where one request becomes the next. A bare "and" splits only before a command
+#: verb, so "search for rock and roll" stays one search.
+CLAUSES = re.compile(
+    r",\s*(?:and\s+|then\s+)?|\s+(?:and\s+then|then)\s+|\s+and\s+(?=(?:open|click|view|visit|follow|go|"
+    r"search|find|look|select|choose|type|enter|show|sort|filter|scroll|book|press|submit)\b)", re.I)
+
+#: A clause that points at something to click rather than naming something to type.
+_POINTING = re.compile(r"\s*(?:and\s+|then\s+)?(?:click|open|view|visit|follow|select|choose|press|tap)\b",
+                       re.I)
+
+#: A request that ends by pointing at a result with nothing in between - "search
+#: for the latest news on github open the top one". 2026-09-24: with no "and" to
+#: split on, all of it was typed into Bing.
+_TRAILING_POINT = re.compile(
+    r"\s+(?:(?:and\s+then|and|then)\s+)?((?:open|click|visit|view)\s+(?:on\s+)?(?:(?:it|that|this)|"
+    r"(?:the\s+)?(?:(?:top|first|second|third|last|cheapest|best|newest|latest|next)\s+)?"
+    r"(?:one|result|link|item|page|video|article|story|site)s?))\s*[.!]*$", re.I)
 
 
 def last_clause(goal: str) -> str:
     return CLAUSES.split(goal)[-1]
+
+
+def clauses(goal: str) -> list[str]:
+    return [c.strip() for c in CLAUSES.split(goal) if c and c.strip()]
+
+
+def pointing(clause: str) -> bool:
+    """Does this clause point at something to click, rather than name a value to type?"""
+    return bool(_POINTING.match(clause))
+
+
+def normalise(goal: str) -> str:
+    """Give a run-on request its missing clause break: "... github open the top one"."""
+    m = _TRAILING_POINT.search(goal)
+    if not m:
+        return goal
+    head = goal[:m.start()].rstrip(" ,")
+    if not has_value(head):
+        return goal                       # nothing before it: "open the top one" alone
+    return "%s, then %s" % (head, m.group(1))
+
+
+def typeable(goal: str) -> bool:
+    """Is there anything to TYPE - a value in a clause that is not just pointing?
+
+    2026-09-24: "click image creator" was offered TYPE_TEXT because "image
+    creator" looks like a value, and after the click it typed it into Bing's
+    image prompt. In a pointing clause those words are a label to click.
+    """
+    return any(has_value(c) for c in clauses(goal) if not pointing(c))
+
+
+_SEARCH = re.compile(r"\s*(?:(?:hi|hey|ok|okay)\s+)?(?:jobe[,!.]?\s+)?(?:please\s+)?"
+                     r"(?:search|find|look\s+up|look\s+for|lookup|google)\b", re.I)
+
+
+def search_first(goal: str) -> bool:
+    """A request that starts by searching for something: type it before clicking anything.
+
+    2026-09-24: "search github" on a results page clicked a GitHub link instead
+    of searching - the word matched a link, and the readout went with the lure.
+    """
+    first = clauses(goal)[0] if clauses(goal) else goal
+    return bool(_SEARCH.match(first)) and has_value(first)
+
+
+#: Going to a site by name: "go to github", "open blender".
+_SITE = re.compile(
+    r"\s*(?:(?:hi|hey|ok|okay)\s+)?(?:jobe[,!.]?\s+)?(?:please\s+)?(?:can\s+you\s+)?"
+    r"(?P<verb>go\s+to|goto|got\s+to|go\s+on\s+to|visit|navigate\s+to|take\s+me\s+to|load|open\s+up|open)\s+"
+    r"(?:the\s+)?(?P<name>.+?)(?:\s+(?:website|web\s+site|site|homepage|home\s+page))?(?:\s+please)?"
+    r"\s*[.!?]*$", re.I)
+_NOT_A_SITE = re.compile(r"^(?:a\s+)?(?:new\s+)?(?:web\s+)?(?:browser|chrome|tab|window)$", re.I)
+
+
+def site_request(clause: str) -> tuple[str, str] | None:
+    """("go"|"open", name) when a clause asks for a site by name, else None.
+
+    2026-09-24: "got to github" was typed into Bing as a search, and "open
+    blender" on GitHub's login page typed "blender" into the username box.
+    Neither name was on the page; both meant "take me to that site".
+    """
+    m = _SITE.fullmatch(clause)
+    if not m:
+        return None
+    name = m.group("name").strip()
+    if _NOT_A_SITE.match(name) or not has_value(name):
+        return None                        # "open the top one", "open it", "open a new tab"
+    verb = m.group("verb").lower()
+    return ("open" if verb.startswith("open") else "go", name)
 
 
 def wants_a_result(goal: str) -> bool:
@@ -122,6 +208,37 @@ def leaves_site(href: str | None, page_url: str) -> bool:
     return _site(urlparse(urljoin(page_url, real)).hostname) != _site(here.hostname)
 
 
+def destination_host(href: str | None, page_url: str) -> str:
+    """The host a link really leads to, looking through an engine's click-tracker."""
+    if not href:
+        return ""
+    try:
+        full = urljoin(page_url, href)
+        dest = urlparse(full)
+        if _REDIRECT.match(dest.path or ""):
+            real = unwrap(full)
+            if real:
+                dest = urlparse(urljoin(page_url, real))
+        return (dest.hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def names_host(name: str, host: str) -> bool:
+    """Does a host carry the name? "blender" -> www.blender.org, "new york times" -> nytimes.com."""
+    squashed = re.sub(r"[^a-z0-9]", "", host.lower())
+    return any(w in squashed for w in (re.sub(r"[^a-z0-9]", "", w) for w in named_words(name)) if len(w) >= 3)
+
+
+#: A page's own furniture, never a result - even when it links off-site.
+#: 2026-09-24: Bing's "Accessibility Help" leads to microsoft.com, so it passed
+#: as "a link that leaves the engine", and asked for the top result for
+#: "blender", the readout clicked it.
+CHROME_LINK = re.compile(r"^\s*(?:skip\s+to\s+(?:main\s+)?content|accessibility(?:\s+help)?|feedback|"
+                         r"privacy(?:\s+(?:policy|statement))?|terms(?:\s+of\s+(?:use|service))?|cookies?|"
+                         r"help|settings|about(?:\s+us)?|advertis\w*|report\s+\w+)\s*$", re.I)
+
+
 def results_page(url: str) -> bool:
     """A web search engine's results page: an engine host with a query in the URL."""
     p = urlparse(url or "")
@@ -129,6 +246,19 @@ def results_page(url: str) -> bool:
         return False
     q = parse_qs(p.query)
     return any(q.get(k) for k in ("q", "p", "query", "text", "wd"))
+
+
+def search_url(home: str, query: str) -> str:
+    """The results page for `query` on the engine `home` is (Bing when it is none of these)."""
+    from urllib.parse import quote_plus
+    host, q = (urlparse(home).hostname or ""), quote_plus(query)
+    if "duckduckgo" in host:
+        return "https://duckduckgo.com/?q=" + q
+    if "google" in host:
+        return "https://www.google.com/search?q=" + q
+    if "brave" in host:
+        return "https://search.brave.com/search?q=" + q
+    return "https://www.bing.com/search?q=" + q
 
 
 #: Web search engines: their one box takes the whole request as the query.
@@ -167,8 +297,6 @@ def candidate_spans(goal: str, *, max_len: int = 6, limit: int = 16, site: str =
     September" and dropped "Zurich" and "London", the two values a flight form
     actually needs.
     """
-    words = _words(goal)
-    lower = [w.lower() for w in words]
     spans: list[str] = []
 
     def add(s):
@@ -176,26 +304,34 @@ def candidate_spans(goal: str, *, max_len: int = 6, limit: int = 16, site: str =
         if s and s.lower() not in {x.lower() for x in spans}:
             spans.append(s)
 
-    # 1. the goal minus its leading command/stop words: "search for the latest news on github"
-    #    -> "latest news on github". The most common search value by far. On a site, a
-    #    leading mention of the site itself goes too: "search wikipedia for the eiffel
-    #    tower" on wikipedia.org -> "eiffel tower".
+    # Values come from the clauses that name one: in "search for X, then open the
+    # top one" nothing after the comma is ever typed.
+    parts = [c for c in clauses(goal) if not pointing(c)] or clauses(goal) or [goal]
     here = site_words(site) if site else set()
-    i = 0
-    while i < len(words) and (lower[i] in COMMAND or lower[i] in STOP or lower[i] in here):
-        i += 1
-    if i < len(words):
-        add(" ".join(words[i:]))
-
-    # 2. every span that neither starts nor ends on a stop/command word, short first
-    for n in range(1, max_len + 1):
-        for start in range(0, len(words) - n + 1):
-            seg = lower[start:start + n]
-            if seg[0] in STOP or seg[-1] in STOP or seg[0] in COMMAND or seg[-1] in COMMAND:
-                continue
-            if all(w in STOP or w in COMMAND for w in seg):
-                continue
-            add(" ".join(words[start:start + n]))
+    for part in parts:
+        # 1. the clause minus its leading command/stop words: "search for the latest news on
+        #    github" -> "latest news on github". The most common search value by far. On a
+        #    site, a leading mention of the site itself goes too: "search wikipedia for the
+        #    eiffel tower" on wikipedia.org -> "eiffel tower".
+        words = _words(part)
+        lower = [w.lower() for w in words]
+        i = 0
+        while i < len(words) and (lower[i] in COMMAND or lower[i] in STOP or lower[i] in here):
+            i += 1
+        if i < len(words):
+            add(" ".join(words[i:]))
+    for part in parts:
+        # 2. every span that neither starts nor ends on a stop/command word, short first
+        words = _words(part)
+        lower = [w.lower() for w in words]
+        for n in range(1, max_len + 1):
+            for start in range(0, len(words) - n + 1):
+                seg = lower[start:start + n]
+                if seg[0] in STOP or seg[-1] in STOP or seg[0] in COMMAND or seg[-1] in COMMAND:
+                    continue
+                if all(w in STOP or w in COMMAND for w in seg):
+                    continue
+                add(" ".join(words[start:start + n]))
     return spans[:limit]
 
 
@@ -207,6 +343,37 @@ def has_value(goal: str) -> bool:
     """
     skip = STOP | COMMAND | REFERENCE
     return any(w.lower() not in skip for w in _words(goal))
+
+
+# --------------------------------------------- signing in: never on its own
+
+#: Fields that take credentials or contact details. A search box never counts.
+#: 2026-09-24: "open blender" on GitHub's login page typed "blender" into
+#: "Username or email address", then clicked "Continue with Google".
+CREDENTIAL_FIELD = re.compile(
+    r"\b(?:user\s*name|e-?mail|password|passcode|phone\s+number|mobile\s+number|account\s+number|"
+    r"card\s+number|cvv|cvc|security\s+code|one[\s-]time\s+(?:code|password)|otp|verification\s+code|"
+    r"2fa|log\s*in|sign\s*in)\b", re.I)
+#: Controls that start signing in, signing up, or an OAuth flow.
+SIGN_IN_CONTROL = re.compile(
+    r"\b(?:sign\s*in|log\s*in|login|sign\s*up|register|create\s+(?:an\s+|your\s+)?account|"
+    r"continue\s+with\s+(?:google|apple|microsoft|facebook|github|email|phone)|sign\s+in\s+with|"
+    r"forgot\s+(?:your\s+)?password|use\s+(?:a\s+)?passkey)\b", re.I)
+_WANTS_SIGN_IN = re.compile(r"\b(?:sign\s*in|log\s*in|login|sign\s*up|register|account|password|"
+                            r"user\s*name|e-?mail|subscribe)\b", re.I)
+
+
+def wants_sign_in(goal: str) -> bool:
+    """Only a request that says so may touch sign-in fields and buttons."""
+    return bool(_WANTS_SIGN_IN.search(goal))
+
+
+def sign_in_thing(action: dict) -> bool:
+    """A credential field (as typed into, or as clicked into) or a sign-in control."""
+    label = action.get("label") or ""
+    if action.get("role") in ("textbox", "searchbox", "combobox", "spinbutton") or action.get("kind") == "fill":
+        return bool(CREDENTIAL_FIELD.search(label)) and "search" not in label.lower()
+    return action.get("kind") == "click" and bool(SIGN_IN_CONTROL.search(label))
 
 
 # ------------------------------------------------- controls the goal names

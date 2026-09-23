@@ -34,25 +34,30 @@ from pathlib import Path
 SNAPSHOT_JS = (Path(__file__).with_name("snapshot.js")).read_text(encoding="utf-8")
 
 #: Resolve an observed node and prove it can take input RIGHT NOW. Mirrors
-#: jev-ultrafast's pre-input check; returns the centre point, or null.
+#: jev-ultrafast's pre-input check; returns the centre point, or why not.
+#: `link` says the element is a real link or button, which `act` may click
+#: directly when something covers its centre or the centre is off-screen.
 RESOLVE_JS = """(action => {
   const e = window.__jevFast?.nodes.get(action.node);
-  if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
-      !e.checkVisibility({checkOpacity:true, checkVisibilityCSS:true})) return null;
-  if (action.kind === 'fill' && (e.readOnly || e.getAttribute('aria-readonly') === 'true')) return null;
+  if (!e?.isConnected) return {why: 'gone'};
+  if (e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) return {why: 'disabled'};
+  if (!e.checkVisibility({checkOpacity:true, checkVisibilityCSS:true})) return {why: 'hidden'};
+  if (action.kind === 'fill' && (e.readOnly || e.getAttribute('aria-readonly') === 'true')) return {why: 'read-only'};
   e.scrollIntoView({block:'nearest', inline:'nearest'});
   const r = e.getBoundingClientRect(), x = r.x + r.width/2, y = r.y + r.height/2;
-  if (!r.width || !r.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
+  const link = (e.tagName === 'A' && /^https?:/i.test(e.href || '')) || e.tagName === 'BUTTON' ||
+               ['link', 'button'].includes(e.getAttribute('role'));
+  if (!r.width || !r.height || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return {why: 'off-screen', link};
   const hit = document.elementFromPoint(x, y);
-  if (!(e === hit || e.contains(hit) || hit?.contains(e) && hit.tagName === 'LABEL')) return null;
+  if (!(e === hit || e.contains(hit) || hit?.contains(e) && hit.tagName === 'LABEL')) return {why: 'covered', link};
   if (action.kind === 'select') {
     if (e.tagName !== 'SELECT' || ![...e.options].some(o => o.value === action.value && !o.disabled))
-      return null;
+      return {why: 'option gone'};
     e.value = action.value;
     e.dispatchEvent(new Event('input', {bubbles:true}));
     e.dispatchEvent(new Event('change', {bubbles:true}));
   }
-  return {x, y, w: r.width, h: r.height, left: r.x, top: r.y};
+  return {ok: true, x, y, w: r.width, h: r.height, left: r.x, top: r.y};
 })"""
 
 #: After input: let the page react. Two animation frames or 50 ms normally;
@@ -354,8 +359,17 @@ class Browser:
         if type(action.get("node")) is not int:
             raise StalePage("no observed node to act on")
         hit = self.page.evaluate(RESOLVE_JS, action)
-        if hit is None:
-            raise StalePage("the element changed, moved or is covered")
+        if not hit.get("ok"):
+            if kind == "click" and hit.get("link") and hit.get("why") in ("covered", "off-screen"):
+                # Still there, but something sits over its centre or the centre is off
+                # the screen - a sticky bar, an answer panel that keeps re-rendering. A
+                # link or button can be clicked directly. 2026-09-24: Bing's streaming
+                # answer failed this check three times running and the goal gave up.
+                self.page.evaluate("n => window.__jevFast?.nodes.get(n)?.click()", action["node"])
+                self._last_input = action
+                self._after_navigation_maybe()
+                return
+            raise StalePage("the element is %s" % hit.get("why", "unavailable"))
         if kind == "select":
             self._last_input = action
             return

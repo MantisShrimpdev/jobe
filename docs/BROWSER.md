@@ -78,6 +78,13 @@ the round it came from. The suite rounds are `runs/browse-suite-r*.json`.
 | Stop on repeats, an A-B-A-B oscillation, or three actions that changed nothing | Round 1 clicked for fourteen steps on a page it had already reached |
 | "Changed" is judged by meaning, not node identity | Single-page apps re-render with fresh node ids on every click |
 | A human-verification page stops the goal; "continue" resumes it | Round 4: DuckDuckGo's duck-picking challenge, and the agent clicked its Submit |
+| Sign-in fields and buttons are never offered unless the request says to sign in | 2026-09-24, first real use: "open blender" on GitHub's login page typed into the username box, then clicked "Continue with Google" |
+| "go to X", or "open X" when nothing on the page carries X, looks X up and opens the top result | Same session: "got to github" was searched as text; "open blender" is above |
+| "open browser" and "close browser" are rules, not readout guesses | Same session: a second "open browser" was read as a task |
+| A run-on request is split before its pointing end, and only value clauses are typed | Same session: all of "search for the latest news on github open the top one" was typed into Bing |
+| A click command offers no typing, and ends once the thing it names was clicked | Same session: after clicking Image creator it typed "image creator" into the image prompt |
+| A search request types before it clicks | Same session: "search github" clicked a GitHub link instead |
+| An element that fails the pre-click check is not offered again; a covered link or button is clicked directly | Same session: Bing's streaming answer failed the check three times and the goal gave up |
 | An action judged hard to undo waits for the person's OK | This project's own boundary, not a measured failure |
 
 ## Measured
@@ -89,6 +96,13 @@ the round it came from. The suite rounds are `runs/browse-suite-r*.json`.
 | 6 | 12 / 14 | 2 | 0 | 59 | 253 | 506 |
 | 7 | 13 / 14 | 1 | 0 | 56 | 254 | 482 |
 | 8 | 14 / 14 | 0 | 0 | 56 | 262 | 482 |
+| 9 | 19 / 20 | 1 | 0 | 62 | 293 | 570 |
+
+Round 9 added six requests from the first real session, word for word, and
+passed five. The sixth, "open blender", looked blender up and then clicked
+Bing's "Accessibility Help", which links off-site. With page furniture excluded
+and a site's own results preferred, the seven tasks that open a result re-ran
+7 / 7.
 
 Round 8 is the code as committed, including the security hardening of the
 agent's browser. One run each, one seed of live pages: a pass rate on 14 tasks

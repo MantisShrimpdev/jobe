@@ -453,8 +453,8 @@ check - do it yourself in the browser window and say "continue" - and it pauses
 for your OK before anything its readout judges hard to undo.
 
 `bench/browse_suite.py` is the evaluation: fourteen tasks on a local fixture and
-on live sites, each judged by the page, not by Jobe's own DONE. Round 8 passed
-all 14 at a median of 262 ms per decision. The design, every rule with the
+on live sites, each judged by the page, not by Jobe's own DONE. Round 9 added
+six requests from the first real session; all 20 pass, at about 0.3 s a decision. The design, every rule with the
 failure that produced it, the measurements, and a review of DeepSeek Harness are
 in [docs/BROWSER.md](docs/BROWSER.md).
 
@@ -483,7 +483,7 @@ src/jobe/
   wide.py      choices wider than the answer slots: narrow, do not refuse
   browse/      the chat window's browser agent: snapshot, policy, guards, loop, app (docs/BROWSER.md)
 desktop/       Jobe.cmd + jobe_chat.py: open the always-on-top chat window
-tests/         194 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
+tests/         214 tests; a few need a tokenizer, two are opt-in on a real GPU (the worlds, gate and calibration tests moved to TheLab)
 ```
 
 ## Next
