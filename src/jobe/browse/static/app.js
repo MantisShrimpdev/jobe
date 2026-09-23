@@ -5,8 +5,11 @@ const TOKEN = window.JOBE_TOKEN;
 const $ = (s) => document.querySelector(s);
 const feed = $("#feed"), input = $("#input"), send = $("#send"), stop = $("#stop");
 const statusPill = $("#status"), pin = $("#pin"), empty = $("#empty");
+const brainBtn = $("#brain"), brainName = $("#brainName"), brainMenu = $("#brainMenu");
+const brainNote = $("#brainNote"), remoteForm = $("#remoteForm"), remoteModel = $("#remoteModel");
 const KEEP_IMAGES = 12;              // older step screenshots are dropped from the DOM
 let lastSeq = 0, ready = false, busy = false, lastCard = null, history = [], histIdx = -1;
+let brainKey = null;                 // "kind:name" of what answers now
 
 // ------------------------------------------------------------------ helpers
 function el(tag, cls, text) {
@@ -134,15 +137,32 @@ function line(text, cls) {
   return l;
 }
 
+// A confirmation is answered by whatever happens next. Its buttons go then: an
+// "Allow" left on an old card - a replayed one especially - would send "yes"
+// and approve whatever action happens to be paused NOW.
+function settleConfirms() {
+  feed.querySelectorAll(".card.confirm .actions").forEach((a) => a.remove());
+}
+
 function handle(ev) {
   if (ev.seq && ev.seq <= lastSeq) return;
   if (ev.seq) lastSeq = ev.seq;
+  if (["user", "decision", "done", "confirm", "error"].includes(ev.kind)) settleConfirms();
   switch (ev.kind) {
     case "status":
       if (ev.phase === "loading") { setStatus("loading", "Loading"); }
       else if (ev.phase === "ready") {
         ready = true; setStatus("ready", "Ready"); send.disabled = !input.value.trim();
         if (ev.model) statusPill.title = "Model: " + ev.model;
+        if (ev.brain) {
+          const key = ev.brain.kind + ":" + ev.brain.name;
+          if (brainKey && key !== brainKey) {
+            add(line("Now answering: " + (ev.brain.kind === "remote" ? ev.brain.name + " on OpenRouter"
+                                                                        : "Jobe on this PC")));
+          }
+          brainKey = key;
+          showBrain(ev.brain);
+        }
       }
       else if (ev.text) add(line(ev.text));
       break;
@@ -278,6 +298,54 @@ pin.addEventListener("click", async () => {
     pin.setAttribute("aria-pressed", String(on));
     pin.title = on ? "Keep on top" : "Not on top";
   } catch (e) { /* ignore */ }
+});
+
+// ------------------------------------------------------------------ brain
+function showBrain(b) {
+  brainBtn.dataset.kind = b.kind;
+  brainName.textContent = b.kind === "remote" ? b.name.split("/").pop() : "Jobe";
+  brainBtn.title = b.kind === "remote" ? "Answering: " + b.name + " on OpenRouter"
+                                       : "Answering: Jobe (Qwen3.5-4B) on this PC";
+}
+function note(text, bad) { brainNote.textContent = text || ""; brainNote.classList.toggle("bad", !!bad); }
+function errorText(e) { try { return JSON.parse(e).error || String(e); } catch (_) { return String(e); } }
+function closeMenu() { brainMenu.hidden = true; brainBtn.setAttribute("aria-expanded", "false"); }
+
+brainBtn.addEventListener("click", async (e) => {
+  e.stopPropagation();
+  if (!brainMenu.hidden) return closeMenu();
+  brainMenu.hidden = false; brainBtn.setAttribute("aria-expanded", "true");
+  try {
+    const h = await (await fetch("/health")).json();
+    const off = !h.remote_available;
+    remoteModel.disabled = off; remoteForm.querySelector("button").disabled = off;
+    note(off ? "Set OPENROUTER_API_KEY as a user environment variable to use a hosted model."
+             : "A hosted model sees every page Jobe looks at.");
+  } catch (_) { note(""); }
+});
+brainMenu.addEventListener("click", (e) => e.stopPropagation());
+document.addEventListener("click", closeMenu);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+
+brainMenu.querySelector('[data-brain="local"]').addEventListener("click", async () => {
+  closeMenu();
+  if (brainBtn.dataset.kind === "local") return;          // already answering
+  add(line("Switching to Jobe on this PC…"));              // before the post: the switch can beat its reply
+  try { await post("/brain", { model: "local" }); }
+  catch (e) { add(el("div", "error", "Could not switch: " + errorText(e))); }
+});
+remoteForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const model = remoteModel.value.trim();
+  if (!model) return;
+  note("Checking " + model + " with one real decision…");
+  try {
+    await post("/brain", { model });
+    closeMenu(); note("");
+    // Idle, the switch lands at once and says "Now answering: ..." itself;
+    // mid-goal it waits, so say that it is coming.
+    if (busy) add(line(model + " passed a test decision - switching after this goal."));
+  } catch (err) { note(errorText(err), true); }
 });
 
 connect();

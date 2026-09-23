@@ -75,6 +75,27 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .icon[aria-pressed="true"] { color: var(--accent); }
 .icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* ---- brain menu */
+.bar { position: relative; }
+.brain { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 150px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 12px; padding: 3px 6px 3px 9px; border-radius: 99px; }
+.brain span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brain svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.brain:hover { border-color: var(--ink-3); color: var(--ink); }
+.brain[data-kind="remote"] { border-color: var(--accent); color: var(--accent); }
+.menu { position: absolute; top: calc(100% - 4px); left: var(--s3); right: var(--s3); max-width: 340px; z-index: 10; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); padding: 6px; }
+.menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; border: 0; background: transparent; padding: 8px 10px; border-radius: 7px; text-align: left; }
+.menu-item:hover { background: var(--surface-2); }
+.menu-item span { color: var(--ink-3); font-size: 12px; }
+.menu-form { border-top: 1px solid var(--line); margin-top: 6px; padding: 10px 4px 2px; }
+.menu-form label { display: block; font-size: 12px; color: var(--ink-3); margin: 0 0 6px 6px; }
+.menu-form .row { display: flex; gap: 6px; }
+.menu-form input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 7px; padding: 6px 8px; font: 12.5px var(--mono); outline: none; }
+.menu-form input:focus { border-color: var(--accent); }
+.menu-form input:disabled, .menu-form .btn:disabled { opacity: .5; cursor: default; }
+.menu-note { margin: 8px 6px 4px; font-size: 12px; color: var(--ink-3); }
+.menu-note:empty { display: none; }
+.menu-note.bad { color: var(--bad); }
+
 /* ---- feed */
 .feed { overflow-y: auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
 .feed > * { flex-shrink: 0; }   /* a flex column squeezes overflowing cards to slivers otherwise */

@@ -116,6 +116,30 @@ So the window's browser is headed, and the suite runs its live tasks headed.
 Jobe never solves a challenge and adds no evasion beyond the one Chromium flag
 agent browsers commonly set.
 
+## A hosted brain instead of Jobe
+
+The model button in the window's header switches what answers the questions:
+Jobe on this card, or any OpenRouter model that returns logprobs. The loop,
+the rules and the evidence stay exactly the same; only the question-answering
+moves off the card (`RemotePolicy`, through `jobe.remote`).
+
+- The key comes only from `OPENROUTER_API_KEY` - the server's environment, or
+  the Windows user environment, read when you switch - and never reaches the
+  page. `OPENROUTER_ENDPOINT` points it at any OpenAI-compatible gateway.
+- A model is tested with one real decision before it is accepted: no logprobs,
+  or a reasoning preamble before the answer, and it cannot serve the protocol.
+  The current brain stays until then, and a switch requested mid-goal waits for
+  the goal to end.
+- `--brain vendor/model` starts on a hosted model and does not load Jobe at all,
+  which leaves the card free for other work.
+- What it costs: no prefix cache, so every question re-sends the page; only a
+  top-20 window comes back; wide choices are narrowed a level at a time with the
+  same balanced tree as `jobe.wide`; and the provider sees every page.
+
+Verified 2026-09-24 against a local stand-in endpoint (unit tests, the agent
+loop, and the window clicked through end to end). **Not yet run against
+OpenRouter itself** - no key was set on this machine.
+
 ## Security
 
 A local server that drives a browser is a target: any page you visit can send a

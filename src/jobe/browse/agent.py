@@ -61,6 +61,8 @@ _NOT_OPENING = {"checkbox", "radio", "switch", "combobox", "textbox", "searchbox
 _CONTINUE = re.compile(r"(continue|go on|carry on|resume|keep going|try again|done|ok(?:ay)?|"
                        r"i did it|i've done it|solved(?: it)?|all good|go ahead)[.!]*", re.I)
 
+_CANCEL = re.compile(r"(no|n|nope|cancel|stop|don't|do not|never ?mind|leave it)[.!]*", re.I)
+
 _URL = re.compile(r"\b((?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s]*)?)", re.I)
 
 
@@ -166,6 +168,11 @@ class Session:
             if self.pending:
                 self.emit("note", {"text": "Cancelled the paused action."})
                 self.pending = None
+                # A bare "no" (what the window's Cancel button sends) only cancels;
+                # anything longer is the person's next request, and runs.
+                if _CANCEL.fullmatch(text):
+                    self.emit("done", {"status": "stopped", "ms": _ms(started)})
+                    return
             if self.blocked_goal and _CONTINUE.fullmatch(text):
                 goal, self.blocked_goal = self.blocked_goal, None
                 self.emit("note", {"text": "Picking up where I stopped: " + goal})

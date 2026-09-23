@@ -285,6 +285,16 @@ def test_ordinary_pages_are_not_walls():
                                     {"width": 256, "height": 60})]) is None
 
 
+def test_cancelling_a_paused_action_does_not_start_a_goal_called_cancel():
+    """The window's Cancel button sends "cancel"; it once became the next goal."""
+    events = []
+    s = agent.Session.__new__(agent.Session)
+    s.emit = lambda kind, data: events.append(kind)
+    s.pending = {"goal": "buy it"}
+    s.say("cancel")
+    assert events == ["note", "done"] and s.pending is None
+
+
 @pytest.mark.parametrize("text,match", [("continue", True), ("ok", True), ("I did it", True),
                                         ("done!", True), ("search nike", False), ("open the top one", False)])
 def test_continuing_after_a_wall_is_a_short_reply_only(text, match):
@@ -352,6 +362,97 @@ def test_the_agent_browser_is_kept_off_the_chat_server():
     browser.protect(7900)
     assert {"127.0.0.1:7900", "localhost:7900", "[::1]:7900"} <= browser.PROTECTED
     assert browser._SECRET_ENV.search("OPENROUTER_API_KEY") and not browser._SECRET_ENV.search("PATH")
+
+
+# ------------------------------------------------------------ a hosted brain
+
+
+@pytest.fixture()
+def fake_openrouter():
+    """An OpenAI-compatible endpoint that always puts its mass on the first letter."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append({"auth": self.headers.get("Authorization"), "model": body["model"],
+                         "logprobs": body.get("logprobs"), "max_tokens": body.get("max_tokens")})
+            out = json.dumps({"choices": [{"logprobs": {"content": [{"top_logprobs": [
+                {"token": "A", "logprob": -0.05}, {"token": "B", "logprob": -3.0}]}]}}],
+                "usage": {"prompt_tokens": 42}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            self.end_headers()
+            self.wfile.write(out)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    cfg = {"model": "test/model", "key": "k-test", "top_logprobs": 20, "timeout": 5,
+           "endpoint": "http://127.0.0.1:%d/v1/chat/completions" % httpd.server_address[1]}
+    yield cfg, seen
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_a_hosted_brain_narrows_wide_choices_one_level_at_a_time(fake_openrouter):
+    from jobe.prompt import Option
+    cfg, seen = fake_openrouter
+    brain = policy.RemotePolicy(cfg)
+    options = [Option("e%d" % i, 'link "Result %d"' % i) for i in range(20)]
+    r = brain._ask("target:CLICK", "a results page", "Which element?", options)
+    assert r.choice == "e0" and r.passes == 2            # 20 options: a group question, then 10
+    assert len(seen) == 2 and all(s["logprobs"] and s["max_tokens"] == 1 for s in seen)
+    assert seen[0]["auth"] == "Bearer k-test"
+
+
+def test_one_option_is_not_sent_to_the_provider(fake_openrouter):
+    from jobe.prompt import Option
+    cfg, seen = fake_openrouter
+    r = policy.RemotePolicy(cfg)._ask("t", "page", "Which?", [Option("only", "the search box")])
+    assert r.choice == "only" and not seen
+
+
+def test_switching_brains_checks_the_key_and_the_id_first(app_server, monkeypatch):
+    from jobe.browse import app
+    base, token = app_server
+    monkeypatch.setitem(app.STATE, "ready", True)
+    monkeypatch.setattr(app, "openrouter_key", lambda: None)
+
+    def brain(model):
+        req = urllib.request.Request(base + "/brain", data=json.dumps({"model": model}).encode(),
+                                     method="POST", headers={"Content-Type": "application/json",
+                                                             "X-Jobe-Token": token})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    assert brain("rm -rf /")[0] == 400
+    code, body = brain("mistralai/mistral-nemo")
+    assert code == 400 and "OPENROUTER_API_KEY" in body["error"]
+
+
+def test_a_probed_hosted_model_is_queued_for_the_worker(app_server, monkeypatch, fake_openrouter):
+    from jobe.browse import app
+    base, token = app_server
+    cfg, _ = fake_openrouter
+    monkeypatch.setitem(app.STATE, "ready", True)
+    monkeypatch.setattr(app, "remote_cfg", lambda model: dict(cfg, model=model))
+    q = app.STATE["commands"]
+    while not q.empty():
+        q.get_nowait()
+    req = urllib.request.Request(base + "/brain", data=b'{"model": "test/model"}', method="POST",
+                                 headers={"Content-Type": "application/json", "X-Jobe-Token": token})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.status == 200
+    cmd, arg = q.get_nowait()
+    assert cmd == "brain" and isinstance(arg, policy.RemotePolicy) and arg.name == "test/model"
 
 
 def test_the_page_serves_the_token_only_to_itself(app_server):

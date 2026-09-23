@@ -15,6 +15,24 @@
       <span class="name">Jobe</span>
     </div>
     <span class="pill" id="status" data-phase="loading"><i></i><b>Loading</b></span>
+    <button class="brain" id="brain" aria-haspopup="true" aria-expanded="false" aria-controls="brainMenu"
+            title="What answers Jobe's questions">
+      <span id="brainName">Jobe</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="menu" id="brainMenu" hidden>
+      <button class="menu-item" type="button" data-brain="local">
+        <b>Jobe</b><span>Qwen3.5-4B on this PC</span>
+      </button>
+      <form class="menu-form" id="remoteForm" autocomplete="off">
+        <label for="remoteModel">Or a hosted model on OpenRouter</label>
+        <div class="row">
+          <input id="remoteModel" placeholder="vendor/model" spellcheck="false">
+          <button class="btn" type="submit">Use</button>
+        </div>
+      </form>
+      <p class="menu-note" id="brainNote"></p>
+    </div>
     <div class="spacer"></div>
     <button class="icon" id="pin" title="Keep on top" aria-label="Keep on top" aria-pressed="true">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>

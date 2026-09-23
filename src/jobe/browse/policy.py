@@ -396,3 +396,57 @@ class Policy:
                       [Option("true", "true: yes, it is hard to undo"),
                        Option("false", "false: no, it is safe to undo or only browses")])
         return r.scores.get("true", 0.0)
+
+
+# ------------------------------------------------------------ a hosted brain
+
+
+class _Uncached:
+    """Stands in for the prefix cache when every question is its own request."""
+
+    def prime(self, evidence: str) -> int:
+        return len(evidence) // 4           # an estimate: the provider counts the real tokens
+
+
+class RemotePolicy(Policy):
+    """The same questions and the same rules, answered by a hosted model's logprobs.
+
+    Everything that makes the agent work - which operations are offered, the
+    guards, the evidence - is the Policy's and is unchanged; only `_ask` moves
+    off-box, through `jobe.remote`. What that costs, and it is not small:
+
+      * no prefix cache: every question re-sends the page, so a step is several
+        full requests instead of one encode and a few suffixes;
+      * only a top-20 window comes back, so a question whose letters all fall
+        outside it is unmeasured and stops the goal with the reason;
+      * reasoning models cannot serve it at all - their first token is not the
+        answer - which is why a switch is probed with one real decision first;
+      * the provider sees every page the agent looks at.
+    """
+
+    def __init__(self, cfg: dict, *, text_chars: int = 2500):
+        self.bb = None
+        self.cfg = cfg
+        self.name = cfg["model"]
+        self.scorer = _Uncached()
+        self.max_tokens = 0
+        self.text_chars = text_chars
+
+    def _ask(self, did, evidence, criterion, options):
+        if len(options) == 1:
+            return Policy._ask(self, did, evidence, criterion, options)   # not a decision
+        from ..remote import remote_score
+        from ..wide import build_tree, summarise
+        from ..slots import MAX_OPTIONS
+        nodes, passes = build_tree(tuple(options), MAX_OPTIONS), 0
+        while True:
+            leaves = all(n.leaf is not None for n in nodes)
+            opts = tuple(n.leaf if leaves else Option("n%d" % i, summarise(n))
+                         for i, n in enumerate(nodes))
+            r = remote_score(Decision(id=did, evidence=evidence, criterion=criterion, options=opts),
+                             self.cfg)
+            passes += 1
+            if leaves:
+                r.passes = passes
+                return r
+            nodes = nodes[int(r.choice[1:])].children   # a balanced tree: one level at a time

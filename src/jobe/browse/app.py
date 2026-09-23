@@ -26,6 +26,7 @@ import json
 import mimetypes
 import os
 import queue
+import re
 import secrets
 import subprocess
 import sys
@@ -81,31 +82,85 @@ class Hub:
 
 HUB = Hub()
 STATE = {"ready": False, "busy": False, "model": None, "load_error": None, "session": None,
-         "commands": queue.Queue(), "started": time.time()}
+         "commands": queue.Queue(), "started": time.time(), "brain": None, "local": None}
+
+#: What an OpenRouter model id looks like: vendor/model, optionally :variant.
+MODEL_ID = re.compile(r"[\w.\-]+/[\w.\-]+(?::[\w.\-]+)?")
+
+
+def openrouter_key() -> str | None:
+    """The OpenRouter key - from this process's environment or, on Windows, the user's.
+
+    Never logged, never put on a command line, never sent to the page: the page
+    only learns whether there is one. The registry read means a key the person
+    set after this server started still works, without a restart.
+    """
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if key or os.name != "nt":
+        return key or None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+            return winreg.QueryValueEx(k, "OPENROUTER_API_KEY")[0] or None
+    except OSError:
+        return None
+
+
+def remote_cfg(model: str) -> dict:
+    """OpenRouter by default; OPENROUTER_ENDPOINT points it at any OpenAI-compatible
+    chat-completions URL that returns logprobs (another gateway, a local server)."""
+    from jobe.remote import ENDPOINT
+    return {"model": model, "key": openrouter_key(), "top_logprobs": 20, "timeout": 60,
+            "endpoint": os.environ.get("OPENROUTER_ENDPOINT") or ENDPOINT}
 
 
 # ------------------------------------------------------------------ worker
 
 
-def worker(headless: bool, home: str):
+def _local_policy():
+    """Jobe on this card - loaded the first time it is needed, then kept."""
+    if STATE["local"] is None:
+        HUB.emit("status", {"text": "Loading Jobe…", "phase": "loading"})
+        from jobe import load
+        from jobe.browse.policy import Policy
+        STATE["local"] = Policy(load(MODEL, device="auto"))
+    return STATE["local"]
+
+
+def _use(policy) -> None:
+    remote = getattr(policy, "cfg", None) is not None
+    STATE["brain"] = {"kind": "remote" if remote else "local",
+                      "name": policy.name if remote else Path(MODEL).name}
+    STATE["model"] = STATE["brain"]["name"]
+    HUB.emit("status", {"text": "Ready", "phase": "ready", "model": STATE["model"],
+                        "brain": STATE["brain"]})
+
+
+def worker(headless: bool, home: str, brain: str = "local"):
     """The only thread that touches the model or the browser."""
     try:
-        HUB.emit("status", {"text": "Loading Jobe…", "phase": "loading"})
         sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-        from jobe import load
         from jobe.browse.agent import Session
-        from jobe.browse.policy import Policy
-        t0 = time.perf_counter()
-        bb = load(MODEL, device="auto")
-        STATE["model"] = Path(MODEL).name
-        session = Session(Policy(bb), HUB.emit, headless=headless, home=home)
+        if brain == "local":
+            policy = _local_policy()
+        else:
+            # Starting on a hosted brain leaves the card free: the local model
+            # loads only if the person switches to it.
+            from jobe.browse.policy import RemotePolicy
+            from jobe.remote import probe
+            HUB.emit("status", {"text": "Checking %s…" % brain, "phase": "loading"})
+            cfg = remote_cfg(brain)
+            if not cfg["key"]:
+                raise RuntimeError("OPENROUTER_API_KEY is not set")
+            probe(cfg)
+            policy = RemotePolicy(cfg)
+        session = Session(policy, HUB.emit, headless=headless, home=home)
         STATE["session"] = session
         STATE["ready"] = True
-        HUB.emit("status", {"text": "Ready", "phase": "ready", "model": STATE["model"],
-                            "load_s": time.perf_counter() - t0})
+        _use(policy)
     except Exception as exc:  # noqa: BLE001
         STATE["load_error"] = "%s: %s" % (type(exc).__name__, exc)
-        HUB.emit("error", {"text": "Could not load the model - " + STATE["load_error"]})
+        HUB.emit("error", {"text": "Could not start - " + STATE["load_error"]})
         return
 
     while True:
@@ -113,6 +168,15 @@ def worker(headless: bool, home: str):
         if cmd == "quit":
             session.close()
             return
+        if cmd == "brain":
+            # Between goals only: the queue guarantees no goal is mid-flight.
+            try:
+                session.policy = _local_policy() if arg == "local" else arg
+                _use(session.policy)
+            except Exception as exc:  # noqa: BLE001
+                HUB.emit("error", {"text": "Could not switch - %s: %s" % (type(exc).__name__, exc)})
+                _use(session.policy)
+            continue
         STATE["busy"] = True
         HUB.emit("busy", {"busy": True, "text": arg if cmd == "say" else cmd})
         try:
@@ -283,7 +347,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             s = STATE["session"]
             return self._json(200, {"ready": STATE["ready"], "busy": STATE["busy"],
-                                    "model": STATE["model"], "error": STATE["load_error"],
+                                    "model": STATE["model"], "brain": STATE["brain"],
+                                    "remote_available": bool(openrouter_key()),
+                                    "error": STATE["load_error"],
                                     "browser_open": bool(s and s.browser and s.browser.alive)})
         if path == "/events":
             # Read with fetch() rather than EventSource precisely so the token
@@ -325,10 +391,46 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/close":
             STATE["commands"].put(("close", None))
             return self._json(202, {"queued": True})
+        if path == "/brain":
+            return self._brain((body.get("model") or "").strip())
         if path == "/pin":
             return self._json(200, {"pinned": bool(body.get("on")),
                                     "found": set_topmost(bool(body.get("on")))})
         return self._json(404, {"error": "not found"})
+
+    def _brain(self, wanted: str):
+        """Switch what answers the questions: "local", or an OpenRouter model id.
+
+        A hosted model is probed with one real decision before it is accepted -
+        no logprobs, or a reasoning preamble before the answer, and it cannot
+        serve this protocol at all - and the current brain stays until then.
+        """
+        if not STATE["ready"]:
+            return self._json(503, {"error": "still loading"})
+        if wanted == "local":
+            STATE["commands"].put(("brain", "local"))
+            return self._json(202, {"brain": "local"})
+        if not MODEL_ID.fullmatch(wanted):
+            return self._json(400, {"error": "an OpenRouter model id looks like vendor/model"})
+        cfg = remote_cfg(wanted)
+        if not cfg["key"]:
+            return self._json(400, {"error": "Set OPENROUTER_API_KEY as a user environment variable "
+                                              "to use OpenRouter models."})
+        import urllib.error
+        from jobe.browse.policy import RemotePolicy
+        from jobe.remote import RemoteError, probe
+        t0 = time.perf_counter()
+        try:
+            r = probe(cfg)
+        except urllib.error.HTTPError as e:
+            return self._json(422, {"error": "OpenRouter refused %s: HTTP %d" % (wanted, e.code)})
+        except RemoteError as e:
+            return self._json(422, {"error": "%s cannot serve Jobe's questions: %s" % (wanted, e)})
+        except OSError as e:
+            return self._json(502, {"error": "could not reach OpenRouter: %s" % e})
+        STATE["commands"].put(("brain", RemotePolicy(cfg)))
+        return self._json(200, {"brain": wanted, "probe_ms": (time.perf_counter() - t0) * 1000,
+                                "letters_in_window": r.covered})
 
     def _stream(self):
         q, backlog = HUB.subscribe()
@@ -362,10 +464,13 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=7900)
     ap.add_argument("--headless", action="store_true", help="drive the browser without showing it")
     ap.add_argument("--home", default="https://duckduckgo.com")
+    ap.add_argument("--brain", default="local",
+                    help='"local" (Jobe on this card), or an OpenRouter model id that exposes '
+                         "logprobs; the key comes only from OPENROUTER_API_KEY")
     args = ap.parse_args(argv)
     from .browser import protect
     protect(args.port)                     # the agent's browser never loads this window's server
-    threading.Thread(target=worker, args=(args.headless, args.home), daemon=True).start()
+    threading.Thread(target=worker, args=(args.headless, args.home, args.brain), daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     httpd.daemon_threads = True
     print("Jobe chat on http://127.0.0.1:%d/" % args.port, flush=True)
