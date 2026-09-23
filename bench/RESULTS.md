@@ -97,6 +97,82 @@ policy documents. Speed is scored on standard+judge, not hard, so it does not
 enter the axis here; but if judge tasks are long documents, that tail would.
 Eager attention is O(n²) in prompt length; SDPA is the lever if it bites.
 
+## Narrowing a wide choice costs a little, and tree shape costs more than expected
+
+`jobe.wide` answers a choice too wide for the 16 answer slots by grouping
+options into a tree and multiplying probabilities down the path. That is a
+different estimator from the flat readout, and the claim that it is a reasonable
+substitute needed checking rather than asserting.
+
+It is checkable without any wide data at all. Of the 231 public JevBench tasks,
+**142 declare 4-6 options** - comfortably inside the protocol - so the flat
+readout answers them directly while a deliberately lowered `cap` forces the same
+decision through the tree. Both score against the same gold.
+`bench/narrowing.py`, 142 tasks, four arms on identical prompts, one primed
+prefix per task shared by every arm including the flat one.
+
+| arm | accuracy | passes | mean TV vs flat | agreement | paired | McNemar |
+|---|---|---|---|---|---|---|
+| flat | **0.732** | 1.0 | — | — | — | — |
+| cap3-full | 0.704 | 3.0 | 0.132 | 0.873 | 4 fixed / 8 broken, **-4** | p = 0.39 |
+| cap3-prune | 0.697 | 2.0 | 0.144 | 0.866 | 4 / 9, **-5** | p = 0.27 |
+| cap2-full | 0.683 | 3.6 | 0.169 | 0.831 | 4 / 11, **-7** | p = 0.12 |
+
+**Not significant, and not free either.** Every arm's point estimate is negative
+and the ordering is stable across two independent runs. The honest reading is
+that there is no evidence narrowing is lossless and suggestive evidence it costs
+a couple of points. It earns its place because the alternative is refusing the
+decision, not because it is equivalent.
+
+### Tree balance was a real bug, and it cost 10 points
+
+The first run put all three arms at 0.683, net -7. The by-option-count table
+located it:
+
+| n | tree at cap 3 | | flat -> cap3, ragged | flat -> cap3, balanced |
+|---|---|---|---|---|
+| 4 (70 tasks) | `[3, 1]` | **lopsided** | 0.629 -> 0.529 (**-10.0**) | 0.629 -> 0.571 (-5.8) |
+| 5 (56 tasks) | `[3, 2]` | balanced | 0.857 -> 0.839 (-1.8) | 0.857 -> 0.839 (-1.8) |
+| 6 (16 tasks) | `[3, 3]` | balanced | 0.750 -> 0.812 (+6.2) | 0.750 -> 0.812 (+6.2) |
+
+The only lopsided split was the only badly damaged case. `build_tree` folded
+into fixed runs of `cap`, leaving a ragged remainder, so a 4-option decision
+became a group of 3 against a **lone singleton** - and that singleton competed
+at the top level against a whole group on nothing but the shape of the fold.
+
+Folding into `ceil(len/cap)` near-equal groups instead took cap3-full from
+0.683 to **0.704** and net -7 to net -4. It recovered 4 of the 10 points, not
+all of them, so ragged folding was part of the cost and not all of it.
+
+`cap2-full` did not move (net -7 both times), which is the control: at cap 2
+`ceil(n/2)` groups are already even, so there was no raggedness to fix.
+
+### Two things this did settle
+
+- **Depth costs.** cap 2 builds one more level than cap 3 on the same options
+  and loses roughly twice as much (-7 against -4). Each level multiplies another
+  conditional in, and the errors compound. The shallowest tree that fits is the
+  right one: at cap 16 a 240-option choice is depth 2, which is the good regime
+  and is also what `jev-browser` actually sends, because it groups first.
+- **Pruning is nearly free.** Opening only the likeliest group rather than all
+  of them costs 0.7 points (0.704 -> 0.697) and saves a third of the passes
+  (3.0 -> 2.0). `cap3-prune` and `cap3-full` differ in mean TV (0.144 vs 0.132)
+  but agreed on the argmax in the first run entirely - pruning moved the
+  distribution without moving the answer, because the winner was already inside
+  the opened group.
+
+### What this does NOT license
+
+The measurement covers **4 to 6 options**. It says nothing about the 240-option
+element picks that actually run in a browser loop, which have no gold labels to
+check against. Extrapolating a 2.8-point cost at 6 options to a 240-option
+decision is exactly the move this file exists to prevent.
+
+**Every timing in this run is void.** Free VRAM was 8,871 MiB against 8,888 MiB
+of weights, so it spilled to host memory: 601s for 142 x 4 arms. Accuracy is
+deterministic and unaffected; nothing else from the run is usable.
+
+
 ## The backbone was the lever
 
 | backbone | easy | original | hard | ALL | chance |

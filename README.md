@@ -112,7 +112,9 @@ Jev's 0.741. The gap is arithmetic and multi-step inference, and it is a
 capability ceiling of a 4B, not a prompting problem.
 
 **Capped at 16 options** on the fast path, because the answer is a single
-letter. Above that use `score_text`, which is slower, or narrow the menu first.
+letter. Above that: `score_text`, which reads option text and is slower;
+`--wide`, which narrows into a tree and costs a measured ~2.8 points at 4–6
+options; or narrow the menu yourself before asking.
 
 ## Why local, rather than an API
 
@@ -331,11 +333,32 @@ worse than refusing. When it is on, every narrowed answer is flagged in `_meta`
 with its pass count and the options that were never opened individually, and the
 ledger records `narrowed` so the two never pool.
 
-**It is a different estimator, not a cheaper route to the same number.** A flat
-softmax over 16 letters and a product down a tree are not the same quantity, and
-nothing here claims they agree. The test is cheap and has not been run: at 16
-options or fewer both paths work, so the approximation can be scored directly
-against the flat readout. That needs the card.
+**It is a different estimator, not a cheaper route to the same number — and it
+is measured.** 142 labelled JevBench tasks of 4–6 options, forced through a
+lowered `cap` and scored against the same gold (`bench/narrowing.py`):
+
+| arm | accuracy | passes | paired vs flat | McNemar |
+|---|---|---|---|---|
+| flat | **0.732** | 1.0 | — | — |
+| cap3-full | 0.704 | 3.0 | 4 fixed / 8 broken, **−4** | p = 0.39 |
+| cap3-prune | 0.697 | 2.0 | 4 / 9, −5 | p = 0.27 |
+| cap2-full | 0.683 | 3.6 | 4 / 11, −7 | p = 0.12 |
+
+**Not significant, and not free either.** Every point estimate is negative and
+the ordering is stable, so the honest reading is that there is no evidence
+narrowing is lossless and suggestive evidence it costs a couple of points. It
+earns its place because the alternative is refusing the decision.
+
+Finding that number cost a bug: folding into fixed runs of `cap` left a ragged
+remainder, so a 4-option decision at cap 3 became a group of 3 against a **lone
+singleton**, worth −10 points on 70 tasks. Balanced folding recovered 4 of them.
+Two things it settled: **depth costs** — cap 2 builds one more level and loses
+twice as much, so the shallowest tree that fits is the right one — and **pruning
+is nearly free**, 0.7 points for a third fewer passes.
+
+What it does **not** license is the 240-option element pick that actually runs
+in a browser loop. That has no gold labels, and extrapolating a 6-option result
+to it is the move this repo exists to avoid.
 
 What is measured, driving their real bench through the endpoint:
 

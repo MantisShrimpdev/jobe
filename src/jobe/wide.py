@@ -15,17 +15,32 @@ encoded once and each narrowing pass is a short suffix.
 
     P(option) = P(group) * P(option | group)
 
-**This is a different estimator, not a cheaper route to the same number.** A
-flat softmax over 16 letters and a product down a tree are not the same
-quantity, and nothing here claims they agree. The honest test is available and
-has not been run yet: on decisions of 16 options or fewer both paths work, so
-the approximation can be scored directly against the flat readout. Until that
-measurement exists, treat a narrowed distribution as unvalidated.
+**This is a different estimator, not a cheaper route to the same number, and it
+is measured.** `bench/narrowing.py` forces 142 labelled JevBench tasks of 4-6
+options through a deliberately lowered `cap` and scores both paths against the
+same gold:
 
-What IS structural, and worth stating plainly: a narrowed decision is not a
+    flat        0.732        —
+    cap3-full   0.704   net -4 of 142   (4 fixed, 8 broken, McNemar p = 0.39)
+    cap3-prune  0.697   net -5          (2.0 passes instead of 3.0)
+    cap2-full   0.683   net -7          (p = 0.12) - the deepest tree, the worst
+
+So: **not significant, and not free either.** Every arm's point estimate is
+negative, the ordering is stable, and the honest reading is that there is no
+evidence narrowing is lossless and suggestive evidence it costs a little. Use it
+because the alternative is refusing the decision, not because it is equivalent.
+
+Two things the measurement did settle. **Depth costs**: cap 2 builds one more
+level than cap 3 and loses twice as much, so the shallowest tree that fits is
+the right one — at cap 16 a 240-option choice is depth 2, the good regime.
+**Pruning is nearly free**: opening only the likeliest group costs 0.7 points
+against opening all of them and saves a third of the passes.
+
+What is structural, and worth stating plainly: a narrowed decision is not a
 harder problem for the model than the flat one. Each individual readout still
-sees at most `cap` options. What it loses is the chance to weigh a
-late candidate against an early one directly — they only ever meet as groups.
+sees at most `cap` options. What it loses is the chance to weigh a late
+candidate against an early one directly — they only ever meet as groups, and
+that is where the missing points are.
 
 Two design points that came from the caller, not from taste:
 
@@ -126,11 +141,21 @@ class _Node:
 def build_tree(options: tuple[Option, ...], cap: int) -> list[_Node]:
     """Group options into at most `cap` nodes, preserving presentation order.
 
-    Built bottom-up: repeatedly fold runs of `cap` adjacent nodes together until
-    at most `cap` remain. Folding by `cap` and not by `ceil(len/cap)` is the
-    whole point - the latter caps the TOP level while leaving each of its nodes
-    with `ceil(len/cap)` children, so descending one level asks a question wider
-    than the protocol allows. 2,525 options that way gives 16 groups of 158.
+    Built bottom-up and BALANCED: each fold picks the fewest groups that respect
+    the cap, `ceil(len/cap)`, then splits into that many groups of near-equal
+    size. Both halves of that matter, and each cost a measurement:
+
+      * Taking `ceil(len/cap)` as the group SIZE instead caps the top level while
+        leaving every node with `ceil(len/cap)` children, so descending one level
+        asks a question wider than the protocol allows - 2,525 options that way
+        gives 16 groups of 158.
+      * Folding into fixed runs of `cap` respects the cap but leaves a ragged
+        remainder, and the remainder is not harmless. At cap 3 a 4-option
+        decision became a group of 3 against a LONE SINGLETON, and that singleton
+        competes at the top level against a whole group on nothing but the shape
+        of the fold. Measured over 70 four-option JevBench tasks, it cost 10
+        points of accuracy (0.629 -> 0.529), while the balanced 5- and 6-option
+        cases lost 1.8 and gained 6.2.
 
     Order is preserved because a DOM's neighbours are usually related, which is
     the same reason `jev-browser` groups consecutive elements rather than
@@ -138,7 +163,14 @@ def build_tree(options: tuple[Option, ...], cap: int) -> list[_Node]:
     """
     nodes = [_Node(leaf=o) for o in options]
     while len(nodes) > cap:
-        nodes = [_Node(children=nodes[i:i + cap]) for i in range(0, len(nodes), cap)]
+        groups = -(-len(nodes) // cap)          # fewest groups that respect the cap
+        size, extra = divmod(len(nodes), groups)
+        folded, at = [], 0
+        for g in range(groups):
+            take = size + (1 if g < extra else 0)   # spread the remainder, one each
+            folded.append(_Node(children=nodes[at:at + take]))
+            at += take
+        nodes = folded
     return nodes
 
 
