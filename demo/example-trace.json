@@ -1,0 +1,43 @@
+{
+ "goal": "Goal: search for a flight from London to Rome, direct flights only, and select the cheapest direct fare. The task is complete once the page confirms a booking is held.",
+ "url": "http://localhost:8824",
+ "trace": [
+  {
+   "step": 1,
+   "element": "checkbox Direct flights only = unchecked",
+   "op": "CLICK",
+   "status": "continue",
+   "ms": 11367.709999991348
+  },
+  {
+   "step": 2,
+   "element": "button Search flights",
+   "op": "CLICK",
+   "status": "continue",
+   "ms": 10816.82260002708
+  },
+  {
+   "step": 3,
+   "element": "dropdown To = Choose a destination",
+   "op": "SELECT",
+   "status": "continue",
+   "ms": 14458.157499990193
+  },
+  {
+   "step": 4,
+   "element": "button Search flights",
+   "op": "CLICK",
+   "status": "continue",
+   "ms": 13474.631900025997
+  },
+  {
+   "step": 5,
+   "element": "button Select (Ryanair, 06:25, 2h 30m, Direct, \u00a398, Select)",
+   "op": "CLICK",
+   "status": "done",
+   "ms": 6716.7719999852125
+  }
+ ],
+ "decisions": 15,
+ "model_ms": 56834.09400001983
+}

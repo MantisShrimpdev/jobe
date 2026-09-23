@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skyward — find a flight</title>
+<style>
+  :root{
+    --ink:#15181e; --muted:#667085; --rule:#e2e6ec; --paper:#fff; --bg:#f4f6f9;
+    --brand:#1f5fa9; --brand-ink:#fff; --ok:#127a3d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+       color:var(--ink);background:var(--bg)}
+  header{background:var(--paper);border-bottom:1px solid var(--rule);padding:14px 28px;
+         display:flex;align-items:center;gap:26px}
+  .logo{font-weight:800;font-size:19px;letter-spacing:-.3px}
+  nav a{color:var(--muted);text-decoration:none;font-size:14px}
+  nav a:hover{color:var(--ink)}
+  .spacer{flex:1}
+  main{max-width:900px;margin:32px auto;padding:0 24px}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--muted);margin:0 0 24px}
+  .card{background:var(--paper);border:1px solid var(--rule);border-radius:14px;padding:22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;
+        text-transform:uppercase;letter-spacing:.4px}
+  input,select{width:100%;padding:10px 12px;border:1px solid var(--rule);border-radius:9px;
+               font:inherit;background:var(--paper);color:var(--ink)}
+  input:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+  .row{display:flex;align-items:center;gap:10px;margin-top:16px}
+  .row label{margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink);font-weight:500}
+  button{font:inherit;padding:11px 20px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+  .primary{background:var(--brand);color:var(--brand-ink);font-weight:600}
+  .ghost{background:var(--paper);border-color:var(--rule);color:var(--ink)}
+  .banner{position:fixed;left:0;right:0;bottom:0;background:var(--paper);
+          border-top:1px solid var(--rule);padding:16px 28px;display:flex;align-items:center;
+          gap:16px;box-shadow:0 -6px 24px rgba(0,0,0,.07);z-index:50}
+  .banner p{margin:0;font-size:13px;color:var(--muted);flex:1}
+  .hidden{display:none !important}
+  table{width:100%;border-collapse:collapse;background:var(--paper)}
+  th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--rule);font-size:14px}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .price{font-weight:700}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;
+        background:#e6f4ec;color:var(--ok);font-weight:600}
+  .done{padding:28px;text-align:center}
+  .done h2{margin:0 0 8px}
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Skyward</span>
+  <nav><a href="#" id="nav-deals">Deals</a></nav>
+  <nav><a href="#" id="nav-hotels">Hotels</a></nav>
+  <nav><a href="#" id="nav-cars">Car hire</a></nav>
+  <nav><a href="#" id="nav-manage">Manage booking</a></nav>
+  <span class="spacer"></span>
+  <button class="ghost" id="signin">Sign in</button>
+  <button class="ghost" id="help">Help</button>
+</header>
+
+<main>
+  <section id="search-view">
+    <h1>Find a flight</h1>
+    <p class="sub">Compare direct and connecting fares across 400 airlines.</p>
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="from">From</label>
+          <select id="from"><option>London (LHR)</option><option>Manchester (MAN)</option>
+            <option>Edinburgh (EDI)</option></select>
+        </div>
+        <div>
+          <label for="to">To</label>
+          <select id="to"><option value="">Choose a destination</option>
+            <option>Rome (FCO)</option><option>Paris (CDG)</option>
+            <option>Madrid (MAD)</option><option>Berlin (BER)</option></select>
+        </div>
+        <div>
+          <label for="depart">Depart</label>
+          <input id="depart" type="text" value="12 Oct">
+        </div>
+        <div>
+          <label for="ret">Return</label>
+          <input id="ret" type="text" value="" placeholder="One way">
+        </div>
+        <div>
+          <label for="pax">Passengers</label>
+          <select id="pax"><option>1 adult</option><option>2 adults</option></select>
+        </div>
+        <div>
+          <label for="cabin">Cabin</label>
+          <select id="cabin"><option>Economy</option><option>Premium</option>
+            <option>Business</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <input type="checkbox" id="direct" style="width:auto">
+        <label for="direct">Direct flights only</label>
+      </div>
+      <div class="row">
+        <input type="checkbox" id="flex" style="width:auto">
+        <label for="flex">My dates are flexible</label>
+      </div>
+      <div class="row" style="margin-top:22px">
+        <button class="primary" id="search">Search flights</button>
+        <button class="ghost" id="reset">Reset</button>
+        <span class="spacer"></span>
+        <a href="#" id="advanced" style="font-size:13px;color:var(--muted)">Advanced options</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="results-view" class="hidden">
+    <h1>London to <span id="dest">Rome</span></h1>
+    <p class="sub" id="results-sub">12 Oct · 1 adult · economy</p>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table>
+        <thead><tr><th>Airline</th><th>Depart</th><th>Duration</th><th>Stops</th>
+          <th>Price</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Alitalia</td><td>07:10</td><td>2h 35m</td><td><span class="pill">Direct</span></td>
+              <td class="price">£214</td><td><button class="ghost" id="pick-0">Select</button></td></tr>
+          <tr><td>Ryanair</td><td>06:25</td><td>2h 30m</td><td><span class="pill">Direct</span></td>
+              <td class="price">£98</td><td><button class="ghost" id="pick-1">Select</button></td></tr>
+          <tr><td>Lufthansa</td><td>09:40</td><td>5h 05m</td><td>1 stop</td>
+              <td class="price">£167</td><td><button class="ghost" id="pick-2">Select</button></td></tr>
+          <tr><td>British Airways</td><td>11:15</td><td>2h 40m</td><td><span class="pill">Direct</span></td>
+              <td class="price">£243</td><td><button class="ghost" id="pick-3">Select</button></td></tr>
+          <tr><td>Wizz Air</td><td>16:50</td><td>4h 20m</td><td>1 stop</td>
+              <td class="price">£112</td><td><button class="ghost" id="pick-4">Select</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:18px">
+      <button class="ghost" id="back">Back to search</button>
+      <button class="ghost" id="sort-price">Sort by price</button>
+      <button class="ghost" id="sort-time">Sort by departure</button>
+    </div>
+  </section>
+
+  <section id="done-view" class="hidden">
+    <div class="card done">
+      <h2 id="done-title">Selected</h2>
+      <p class="sub" id="done-sub"></p>
+    </div>
+  </section>
+</main>
+
+<div class="banner" id="cookie-banner">
+  <p>We use cookies and similar technologies to personalise content and measure
+     advertising performance.</p>
+  <button class="primary" id="accept-cookies">Accept all cookies</button>
+  <button class="ghost" id="reject-cookies">Reject non-essential</button>
+</div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  $("accept-cookies").onclick = $("reject-cookies").onclick = function () {
+    $("cookie-banner").classList.add("hidden");
+  };
+  $("search").onclick = function () {
+    if (!$("to").value) { return; }
+    $("dest").textContent = $("to").value.split(" (")[0];
+    $("results-sub").textContent =
+      $("depart").value + " · " + $("pax").value + " · " +
+      $("cabin").value.toLowerCase() + ($("direct").checked ? " · direct only" : "");
+    $("search-view").classList.add("hidden");
+    $("results-view").classList.remove("hidden");
+  };
+  $("back").onclick = function () {
+    $("results-view").classList.add("hidden");
+    $("search-view").classList.remove("hidden");
+  };
+  ["0", "1", "2", "3", "4"].forEach(function (i) {
+    $("pick-" + i).onclick = function () {
+      var cells = this.closest("tr").children;
+      $("done-title").textContent = "Booking held — " + cells[0].textContent;
+      $("done-sub").textContent =
+        cells[1].textContent + " departure · " + cells[2].textContent + " · " +
+        cells[3].textContent + " · " + cells[4].textContent;
+      $("results-view").classList.add("hidden");
+      $("done-view").classList.remove("hidden");
+    };
+  });
+  $("reset").onclick = function () { $("to").value = ""; $("direct").checked = false; };
+</script>
+</body>
+</html>
