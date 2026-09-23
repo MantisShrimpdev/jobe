@@ -923,6 +923,68 @@ distribution, or abandoning the training track for the inference-time
 interventions in this file, which are so far the only things that have moved a
 number in the right direction.
 
+## Computer-use decisions — the shape people actually ship (2026-09-23)
+
+JevBench measures decision quality. It does not measure the thing Jev is mostly
+being *used* for, which is the cheap decision layer inside an agent loop. The
+published shapes are specific enough to replicate: Browser Use renders an atomic
+DOM snapshot as a numbered table of interactive controls and asks one repeated
+question, "which element do I act on next", over an operation set of CLICK /
+TYPE_TEXT / SELECT / SCROLL_UP / SCROLL_DOWN / WAIT / DONE / BLOCKED;
+`jev-browser` asks four per loop, adding a step status of done / continue /
+error / irreversible / blocked; LangChain's harness adds an urgency noul, a
+fast-versus-powerful model router and a tool-risk gate.
+
+`bench/computer_use.py` runs 39 decisions in those shapes. **36 correct, 0.923**,
+on the frozen Qwen3.5-4B with no training:
+
+| decision | n | correct | accuracy | median ms |
+|---|---:|---:|---:|---:|
+| operation (8 options) | 8 | 8 | **1.000** | 82 |
+| tool-risk + urgency gates (binary) | 8 | 8 | **1.000** | 150 |
+| moderation (binary) | 4 | 4 | **1.000** | 146 |
+| model routing (binary) | 6 | 6 | **1.000** | 151 |
+| element selection | 7 | 6 | 0.857 | 641 |
+| **step status (5 options)** | 6 | 4 | **0.667** | 78 |
+
+Binaries are scored in both orders and averaged; the median above covers both
+passes, so a single binary decision is about 75 ms.
+
+**Step status is the weak one, and it fails in the two places that matter.** It
+called a step `continue` when the next element was a button reading "Permanently
+delete account and all data" — the irreversible gate, missed. And it called a
+step `done` when the address fields were filled but the Save button was still
+unpressed — a silently incomplete task. Those are precisely the two errors an
+agent loop cannot absorb.
+
+**But the confidence number separates them cleanly.** Correct decisions averaged
+0.923 confidence; the three wrong ones were 0.34, 0.59 and 0.77.
+
+| gate | escalated | errors caught | accuracy of what is auto-accepted |
+|---|---:|---:|---:|
+| confidence < 0.80 | 9 of 39 (23%) | **3 of 3** | **1.000** |
+
+A threshold at 0.80 hands 23% of decisions to a slower path and every one of the
+30 it keeps is right. That is the same law as the rest of this file — the errors
+live in the low-confidence band — and here it is directly a deployment recipe
+rather than an observation.
+
+**The menu ceiling is the real cost.** A settings page with 20 controls exceeds
+the sixteen-letter protocol and falls through to `score_text`, which answered all
+three correctly but at 1,437 ms against 82 ms for the letter path, roughly
+eighteen times slower. Published Jev-based browser agents run about 300 ms per
+call, so on a page with more than sixteen controls — which is most pages — this
+readout is the slower option, not the faster one. Narrowing the element table
+before asking, rather than passing the whole snapshot, is the fix that keeps the
+fast path.
+
+**Two caveats that limit what this proves.** The 39 tasks are hand-authored with
+hand-assigned gold answers, so the set demonstrates that the *shape* works and
+says nothing about anyone's real traffic. And one gold answer encodes a value
+rather than a fact: on a consent banner the correct element is "Reject
+non-essential cookies", and the model chose "Accept all cookies" at 0.34
+confidence. An agent left to itself will accept tracking by default.
+
 ## What this does not cover
 
 - ~~Order averaging is still unrun as a scoring mode.~~ **Run (2026-09-23): it
