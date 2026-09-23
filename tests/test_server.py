@@ -399,3 +399,78 @@ def test_the_ledger_separates_narrowed_from_flat(wide_endpoint):
     assert [r["narrowed"] for r in rows] == [True, False]
     assert [r["n_options"] for r in rows] == [230, 9]
     assert rows[0]["passes"] > 1 and rows[1]["passes"] == 1
+
+
+# ------------------------------------------- index-only options (the browser loop)
+
+
+DDG_STATE = {
+    "page": {"url": "https://duckduckgo.com/", "title": "DuckDuckGo", "text": "Switch to DuckDuckGo.",
+             "elements": [
+                 {"i": 0, "tag": "input:checkbox", "label": ""},
+                 {"i": 4, "tag": "textarea", "label": "Search with DuckDuckGo",
+                  "placeholder": "Search privately"},
+                 {"i": 16, "tag": "a", "text": "Duck.ai", "href": "https://duck.ai/"},
+             ]},
+    "task": {"goal": "search nike", "values": {"text": "nike"}},
+}
+TARGET_Q = {"type": "choice",
+            "instructions": "Which entry of `page.elements` (by its `i`) should the next "
+                            "action toward `task.goal` act on?",
+            "criteria": {"0": None, "4": None, "16": None}}
+
+
+def test_index_only_options_are_described_by_the_element_they_name():
+    """The search box was offered as "4: 4" - an index the letter readout cannot
+    cross-reference - and "search nike" failed with it outside the top five."""
+    opts = srv.describe_indices(srv.options_for(TARGET_Q), TARGET_Q, DDG_STATE)
+    by_id = {o.id: o.description for o in opts}
+    assert by_id["4"] == '4: textarea "Search with DuckDuckGo"'
+    assert by_id["16"] == '16: a "Duck.ai"'
+    assert [o.id for o in opts] == ["0", "4", "16"]          # order and ids untouched
+
+
+def test_options_with_real_descriptions_pass_through_unchanged():
+    """Every JevBench option carries a description, so none of this may fire there."""
+    q = {"type": "choice", "instructions": "Which team owns this?",
+         "criteria": {"billing": "Payments", "infra": "Deploys"}}
+    assert srv.describe_indices(srv.options_for(q), q, DDG_STATE) == srv.options_for(q)
+
+
+def test_without_elements_in_the_state_nothing_changes():
+    q = dict(TARGET_Q)
+    assert (srv.describe_indices(srv.options_for(q), q, "plain text evidence")
+            == srv.options_for(q))
+    assert (srv.describe_indices(srv.options_for(q), q, {"task": {}})
+            == srv.options_for(q))
+
+
+def test_only_the_empty_options_are_filled_in():
+    q = {"type": "choice", "instructions": "Which entry of `page.elements`?",
+         "criteria": {"4": None, "16": "a hand-written description"}}
+    by_id = {o.id: o.description for o in srv.describe_indices(srv.options_for(q), q, DDG_STATE)}
+    assert by_id["4"].startswith('4: textarea')
+    assert by_id["16"] == "16: a hand-written description"
+
+
+def test_group_questions_are_described_by_their_summaries():
+    """jev-browser's own two-stage path asks for a `page.groups` entry by `g`."""
+    state = {"page": {"groups": [{"g": 0, "summary": "Search privately | Duck.ai"},
+                                 {"g": 1, "summary": "Community | Email Protection"}]}}
+    q = {"type": "choice", "criteria": {"0": None, "1": None},
+         "instructions": "Which entry of `page.groups` (by its `g`) contains the element?"}
+    by_id = {o.id: o.description for o in srv.describe_indices(srv.options_for(q), q, state)}
+    assert by_id["0"] == "0: group: Search privately | Duck.ai"
+
+
+def test_the_narrowing_tree_now_summarises_something():
+    """Above 16 options the tree's group summaries are built from these
+    descriptions, and they used to read "0: 0 | 1: 1 | 2: 2"."""
+    from jobe import wide
+    els = [{"i": i, "tag": "a", "text": "link %d" % i} for i in range(40)]
+    els[4] = {"i": 4, "tag": "textarea", "label": "Search with DuckDuckGo"}
+    state = {"page": {"elements": els}}
+    q = {"type": "choice", "instructions": "Which entry of `page.elements`?",
+         "criteria": {str(i): None for i in range(40)}}
+    tree = wide.build_tree(tuple(srv.describe_indices(srv.options_for(q), q, state)), 16)
+    assert "Search with DuckDuckGo" in wide.summarise(tree[0])

@@ -392,7 +392,13 @@ class Pin(tk.Tk):
     # ------------------------------------------------------------- plumbing
 
     def _health(self):
-        decision, console, hosted = self._decision(), self._console(), self._cfg()["hosted"]
+        # Captured NOW, and checked again when the result lands. A poll fired
+        # while OpenRouter was selected can return after the user has flipped
+        # back to Jobe, and it would otherwise stamp "server down on :8912"
+        # over a perfectly healthy local backend for the next ten seconds.
+        asked = self.backend.get()
+        decision, console, hosted, port = (self._decision(), self._console(),
+                                           self._cfg()["hosted"], self._cfg()["decision"])
 
         def work():
             try:
@@ -400,15 +406,15 @@ class Pin(tk.Tk):
                     h = json.loads(r.read())
                 name = (h.get("model") or "").replace("\\", "/").split("/")[-1]
                 if hosted:
-                    self.q.put(("status", ("%s · hosted" % name, OK)))
+                    self.q.put(("status", ("%s · hosted" % name, OK, asked)))
                 else:
                     free = h.get("free_vram_mb") or 0
                     self.q.put(("status", ("%s · %d MiB" % (name, free),
-                                           OK if free > 600 else WARN)))
+                                           OK if free > 600 else WARN, asked)))
             except Exception:
                 self.q.put(("status", ("decision server down on :%d%s"
-                                       % (self._cfg()["decision"],
-                                          " (set OPENROUTER_API_KEY)" if hosted else ""), BAD)))
+                                       % (port, " (set OPENROUTER_API_KEY)" if hosted else ""),
+                                       BAD, asked)))
             try:
                 with urllib.request.urlopen(console + "/health", timeout=4) as r:
                     lock = (json.loads(r.read()) or {}).get("lock") or {}
@@ -432,7 +438,8 @@ class Pin(tk.Tk):
             except queue.Empty:
                 break
             if kind == "status":
-                self.status.config(text=payload[0], fg=payload[1])
+                if payload[2] == self.backend.get():      # drop results for a backend we left
+                    self.status.config(text=payload[0], fg=payload[1])
             elif kind == "line":
                 self._say_line(payload[0], payload[1])
                 log_line("note", payload[0])

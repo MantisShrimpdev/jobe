@@ -117,6 +117,64 @@ def options_for(question: dict) -> list[Option]:
     return [Option(id=k, description="%s: %s" % (k, v)) for k, v in pairs]
 
 
+def _brief(entry: dict) -> str:
+    """One element as jev-browser itself describes it (page-model.mjs `brief`)."""
+    name = (entry.get("label") or entry.get("text") or entry.get("placeholder")
+            or entry.get("name") or entry.get("near") or entry.get("href") or "")
+    return '%s "%s"' % (entry.get("tag", "?"), str(name)[:50])
+
+
+def referents(state, question) -> dict[str, str]:
+    """id -> description, for a choice whose options are bare indices into the state.
+
+    jev-browser asks "which entry of `page.elements` (by its `i`)" and sends the
+    criteria as `{"4": null}`: the option is an index with no description, and
+    the element it names lives in the state. A model that reads all 255 options
+    at once can cross-reference that. The letter readout cannot, because it
+    answers with a LETTER and the option text is the only thing binding that
+    letter to an element. Measured on DuckDuckGo: the search box was offered as
+    "4: 4", indistinguishable from the other 156 elements, and the narrowing
+    tree above it summarised its groups as "0: 0 | 1: 1 | 2: 2 ...". "search
+    nike" failed with the search box absent from the target's top five.
+
+    JevBench never reaches this - every JevBench option carries a real
+    description - so this only ever fires on the browser loop's index questions.
+    """
+    if not isinstance(state, dict):
+        return {}
+    page = state.get("page") if isinstance(state.get("page"), dict) else state
+    wants_groups = "page.groups" in (question.get("instructions") or "")
+    out: dict[str, str] = {}
+    if wants_groups:
+        for g in page.get("groups") or []:
+            if isinstance(g, dict) and "g" in g:
+                out[str(g["g"])] = "group: " + str(g.get("summary", ""))[:160]
+    else:
+        for e in page.get("elements") or []:
+            if isinstance(e, dict) and "i" in e:
+                out[str(e["i"])] = _brief(e)
+    return out
+
+
+def describe_indices(options: list[Option], question: dict, state) -> list[Option]:
+    """Give index-only options the description of the entry they index.
+
+    Only options the caller left EMPTY are touched, so anything with a real
+    description - every JevBench option - passes through byte-identical.
+    """
+    criteria = question.get("criteria")
+    if question.get("type") != "choice" or not isinstance(criteria, dict):
+        return options
+    empty = {str(k) for k, v in criteria.items() if not v}
+    if not empty:
+        return options
+    refs = referents(state, question)
+    if not refs:
+        return options
+    return [Option(id=o.id, description="%s: %s" % (o.id, refs[o.id]))
+            if o.id in empty and o.id in refs else o for o in options]
+
+
 def answer_for(backbone, state, question, key: str, scorer=None) -> dict:
     """One question, one forward pass, in the wire format the callers expect.
 
@@ -126,7 +184,7 @@ def answer_for(backbone, state, question, key: str, scorer=None) -> dict:
     that has not been validated against the flat readout would be worse than
     refusing. When it is on, every narrowed answer says so in `_meta`.
     """
-    options = options_for(question)
+    options = describe_indices(options_for(question), question, state)
     if len(options) == 1:
         # The caller declared exactly one option. The protocol needs two - there
         # is nothing to read a distribution over - but the ANSWER is not in
