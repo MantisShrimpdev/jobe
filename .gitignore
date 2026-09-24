@@ -5,3 +5,7 @@ __pycache__/
 artifacts/
 reports/
 /runs/
+
+# Session hand-off notes and machine-specific settings stay on this machine
+/PROGRESS.md
+/desktop/local.cmd
