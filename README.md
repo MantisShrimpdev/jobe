@@ -1,14 +1,18 @@
 # Jobe
 
-**Typed decisions from a frozen model, in your own process.** Give it evidence,
-a criterion and a set of options; it returns a probability for each option, read
-straight from the model's next-token distribution in **one forward pass**.
-Nothing is generated, so there is no text to parse, nothing to repair, and no
-way for the answer to be something other than an id you declared.
+**Typed decisions from a frozen model, in your own process, and a browser agent
+built on them.** Give it evidence, a criterion and a set of options; it returns a
+probability for each option, read straight from the model's next-token
+distribution in **one forward pass**. Nothing is generated, so there is no text
+to parse, nothing to repair, and no way for the answer to be something other
+than an id you declared.
 
-Independent project, not affiliated with Jev or TypeSafe. The decision protocol
-is adapted from [TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf) (MIT);
-`NOTICE` records what was taken and what was changed.
+Around that engine: a chat window that drives a real browser, a decision server
+that records every call, and a lab where every idea that failed is written down
+with the number that killed it. Ranked ninth of 71 in the JevBench v1.4.0
+release, and the top native-logit system.
+
+Independent project, not affiliated with Jev or TypeSafe.
 
 ```python
 from jobe import Decision, Option, load, score
@@ -49,11 +53,11 @@ with no training at all. That is the claim: **the readout is most of the
 value, and you do not need to own a trained model to get it.** Two attempts to
 improve Jobe *by* training both made it worse, and both are written up.
 
-SemIf shares that property and is the closest comparison to this project — same
-family, same frozen-backbone idea, and it runs
-[in your browser](https://openjev.com/) with no install at all, which Jobe does
-not. What Jobe adds is below: in-context slot resolution, the prefix cache, and
-the instrumentation.
+**Around the readout sits the rest of the work.** A chat window that drives a
+real browser, a server that records every decision including the refusals, slot
+resolution that makes SentencePiece tokenizers usable, and a prefix cache that
+will not score a question against the wrong document. Each is below, with its
+measurements.
 
 **It runs inside your program.** No server, no endpoint, no per-call bill, and
 nothing leaves the machine. `pip install`, `load()`, `score()`.
@@ -73,16 +77,41 @@ rejected, all in `bench/RESULTS.md` with the numbers that killed them.
 
 ## See it work
 
-`demo/agent.py` is a browser agent where every decision is one forward pass of
-the frozen model: it snapshots the DOM as a numbered control table, then asks
-which element, which operation and what the status is. It books a flight in five
-steps and picks the cheapest *direct* fare over a cheaper connecting one.
+Double-click `desktop/Jobe.cmd` and a small chat window opens beside a real
+browser. Tell it what you want; every step is a decision from the readout —
+which operation, which element, whether the goal is done — shown in the window
+with the probabilities behind it. See
+[Talk to it: the chat window](#talk-to-it-the-chat-window).
+
+`demo/agent.py` is the same idea as a script: it snapshots the DOM as a numbered
+control table, then asks which element, which operation and what the status is.
+It books a flight in five steps and picks the cheapest *direct* fare over a
+cheaper connecting one.
 
 ![a run](demo/run.png)
 
 ## Where it stands
 
-**JevBench v1.2 public set, through JevBench's own harness** — 231 of 231
+**Officially ranked ninth of 71 in the JevBench v1.4.0 release**, from the
+maintainer's own runs on every item, and the highest-ranked of the four
+native-logit systems. Against Jev 1.13.0, which is first:
+
+| axis | Jev 1.13.0 | Jobe |
+|---|---:|---:|
+| Intelligence | 53.1 | 44.1 |
+| Calibration | 76.3 | 66.1 |
+| Speed | 83.3 | **85.6** |
+| Cost | 52.0 | **59.5** |
+| **composite** | **63.3** | **46.9** |
+
+Faster and cheaper than Jev, behind it on accuracy and calibration. The v1.4
+composite also scores 308 fresh sealed decisions, which the maintainer calls
+unusually difficult for one-pass decision models: Jobe gets 79 right, under the
+29.3% chance line, as does every frozen Qwen3.5-4B readout on the board. Live
+comparison on
+[Benchmark Heaven](https://benchmarkheaven.com/jev-models?compare=jev-1.13.0%2Cjobe-qwen3.5-4b).
+
+**Our own run of the public set, through JevBench's harness** — 231 of 231
 answered, every result `strict_valid`, zero failures, frozen Qwen3.5-4B on one
 RTX 3080, no training.
 
@@ -93,12 +122,7 @@ RTX 3080, no training.
 | hard | 111 | 0.604 | 0.133 | 224 ms |
 | all | 231 | **0.805** | 0.049 | |
 
-Under their live v1.3.0 rule that composites to **72.8**, against SemIf 73.1 and
-Jev 74.4 — the same band, with Jobe ahead on Speed and behind on the hard tier.
-It is a public-set estimate, not a placement: the judge tier is not public and
-the held-out half is unseen. Full numbers, caveats and corrections:
-[`bench/RESULTS.md`](bench/RESULTS.md). Submitted for their own run at
-[fstandhartinger/jevbench#28](https://github.com/fstandhartinger/jevbench/issues/28).
+Full numbers, caveats and corrections: [`bench/RESULTS.md`](bench/RESULTS.md).
 
 ## What it is not
 
@@ -129,11 +153,12 @@ removes all three:
 | Reasoning models unusable: the first token is `Okay`/`<think>`, never the answer | `enable_thinking=False` in the chat template |
 | Only a top-N window is returned; loses the correct option in ~0.9% of decisions | The **full** vocabulary is visible; nothing is ever unmeasured |
 
-## One improvement over the protocol it adapts
+## Works with SentencePiece tokenizers
 
-SemIf verifies answer slots by encoding each letter **standalone**. That rejects
-every SentencePiece tokenizer — Llama-2, Mistral, TinyLlama — because they
-prepend a word-boundary marker to standalone text: `encode("A")` gives `▁A`
+The obvious way to find each answer letter's token is to encode the letter
+**standalone**, and that breaks on every SentencePiece tokenizer — Llama-2,
+Mistral, TinyLlama — because they prepend a word-boundary marker to standalone
+text: `encode("A")` gives `▁A`
 (id 319 on TinyLlama) while the token that actually follows a prompt is a bare
 `A` (id 29909). Reading the logit of `▁A` would measure the wrong thing, with
 full confidence.
@@ -219,8 +244,7 @@ Two guards, both fail-loud rather than degrade:
 ### Batched suffixes
 
 `score_batch(decisions, max_batch=2)` runs several suffixes per forward pass off
-a batch-expanded copy of the cache — SemIf's `shared.py` step. Same document,
-eight questions:
+a batch-expanded copy of the cache. Same document, eight questions:
 
 | path | ms/question | vs uncached | vs serial | peak GB |
 |---|---:|---:|---:|---:|
@@ -231,8 +255,6 @@ eight questions:
 | batch 8 | 189 | 4.8× | **0.6×** | 10.06 |
 
 0 argmax flips at every size; logits within two bf16 ulps of the uncached path.
-SemIf reports 1.9× for its own serial→batched step, which is a reassuring
-cross-check.
 
 Three things the measurement decided rather than the design:
 
@@ -514,9 +536,10 @@ tests/         224 tests; a few need a tokenizer, two are opt-in on a real GPU (
    earlier.
 7. ~~Run through the official harness.~~ Done — 231/231, strict 1.000,
    composite 74.9 under SemIf-class pricing. See `bench/README-submission.md`.
-8. **Submit**: weights pinned to `851bf6e8…` plus `bench/jobe_direct.py`. No
-   server is needed — Benchmark Heaven runs in-process adapters on their own
-   infrastructure, and the spec forbids a home endpoint.
+8. ~~Submit.~~ Done — weights pinned to `851bf6e8…` plus `bench/jobe_direct.py`,
+   run by the maintainer on their own infrastructure (Benchmark Heaven runs
+   in-process adapters, and the spec forbids a home endpoint). Ranked ninth of
+   71 in JevBench v1.4.0; see [Where it stands](#where-it-stands).
 9. ~~Prefix cache.~~ Done — `jobe.prefix`, **11× per question after the first**
    on a 2k-token document, logits within two bf16 ulps, 0/8 flips. Batched
    suffixes too: **1.9× over serial, ~15× over uncached at batch 2**; batch 8
@@ -545,10 +568,9 @@ tests/         224 tests; a few need a tokenizer, two are opt-in on a real GPU (
     distribution wearing the same family names.
 
 The frozen levers have plateaued; **`v0.1.0`** freezes this state as the
-baseline and, after two training runs, is still the shipped readout. What
-follows it: **submit** (item 8 — the held-out number is the one that counts),
-and then the inference-time work, because that is where the measurements now
-point. Training on the exact-law generators is closed, not paused: two runs,
+baseline and, after two training runs, is still the shipped readout. It was
+submitted (item 8) and is officially ranked; what follows is the inference-time
+work, because that is where the measurements now point. Training on the exact-law generators is closed, not paused: two runs,
 the better-trained one worse, and held-out world accuracy moving opposite to
 JevBench hard across all three points. Reopening it needs training data drawn
 from the benchmark's own distribution, not another regulariser on the same
@@ -564,6 +586,9 @@ live in the same 30% of decisions — see the confidence-band section of
 
 ## License and attribution
 
-**MIT** — see `LICENSE`. The decision protocol is adapted from
-[TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf), also MIT; see `NOTICE`
-for what was taken and what was changed.
+**MIT** — see `LICENSE`. Third-party code is credited in `NOTICE`, which
+records exactly what was taken and what was changed: the readout builds on the
+decision protocol from [TheoLeeCJ/SemIf](https://github.com/TheoLeeCJ/SemIf),
+and the browser snapshot comes from
+[browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast), both
+MIT.
